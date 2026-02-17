@@ -1,26 +1,349 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --font-family-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", sans-serif;
+
+  --radius: 0.5rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── DARK MODE (default) ── */
+:root,
+html.dark {
+  --color-background: oklch(0.145 0.02 250);
+  --color-foreground: oklch(0.95 0.01 250);
+  --color-card: oklch(0.18 0.02 250);
+  --color-card-foreground: oklch(0.95 0.01 250);
+  --color-popover: oklch(0.18 0.02 250);
+  --color-popover-foreground: oklch(0.95 0.01 250);
+  --color-primary: oklch(0.7 0.2 200);
+  --color-primary-foreground: oklch(0.145 0.02 250);
+  --color-secondary: oklch(0.55 0.18 165);
+  --color-secondary-foreground: oklch(0.145 0.02 250);
+  --color-muted: oklch(0.25 0.02 250);
+  --color-muted-foreground: oklch(0.6 0.03 250);
+  --color-accent: oklch(0.6 0.2 190);
+  --color-accent-foreground: oklch(0.145 0.02 250);
+  --color-destructive: oklch(0.62 0.24 25);
+  --color-destructive-foreground: oklch(1 0 0);
+  --color-border: oklch(0.25 0.02 250);
+  --color-input: oklch(0.22 0.02 250);
+  --color-ring: oklch(0.7 0.2 200);
+  --color-chart-1: oklch(0.7 0.2 200);
+  --color-chart-2: oklch(0.55 0.18 165);
+  --color-chart-3: oklch(0.68 0.15 280);
+  --color-chart-4: oklch(0.62 0.24 25);
+  --color-chart-5: oklch(0.75 0.24 85);
+  --color-sidebar-background: oklch(0.14 0.02 250);
+  --color-sidebar-foreground: oklch(0.95 0.01 250);
+  --color-sidebar-primary: oklch(0.7 0.2 200);
+  --color-sidebar-primary-foreground: oklch(0.145 0.02 250);
+  --color-sidebar-accent: oklch(0.55 0.18 165);
+  --color-sidebar-accent-foreground: oklch(0.145 0.02 250);
+  --color-sidebar-border: oklch(0.25 0.02 250);
+  --color-sidebar-ring: oklch(0.7 0.2 200);
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ── LIGHT MODE — same energy, inverted ── */
+html.light {
+  --color-background: oklch(0.97 0.01 220);
+  --color-foreground: oklch(0.12 0.03 250);
+  --color-card: oklch(0.99 0.005 220);
+  --color-card-foreground: oklch(0.12 0.03 250);
+  --color-popover: oklch(0.99 0.005 220);
+  --color-popover-foreground: oklch(0.12 0.03 250);
+  --color-primary: oklch(0.48 0.22 200);
+  --color-primary-foreground: oklch(0.99 0 0);
+  --color-secondary: oklch(0.38 0.16 165);
+  --color-secondary-foreground: oklch(0.99 0 0);
+  --color-muted: oklch(0.91 0.02 220);
+  --color-muted-foreground: oklch(0.4 0.04 240);
+  --color-accent: oklch(0.44 0.2 190);
+  --color-accent-foreground: oklch(0.99 0 0);
+  --color-destructive: oklch(0.55 0.22 25);
+  --color-destructive-foreground: oklch(0.99 0 0);
+  --color-border: oklch(0.82 0.03 220);
+  --color-input: oklch(0.93 0.02 220);
+  --color-ring: oklch(0.48 0.22 200);
+  --color-chart-1: oklch(0.48 0.22 200);
+  --color-chart-2: oklch(0.38 0.16 165);
+  --color-chart-3: oklch(0.46 0.16 280);
+  --color-chart-4: oklch(0.55 0.22 25);
+  --color-chart-5: oklch(0.52 0.2 85);
+  --color-sidebar-background: oklch(0.94 0.015 220);
+  --color-sidebar-foreground: oklch(0.12 0.03 250);
+  --color-sidebar-primary: oklch(0.48 0.22 200);
+  --color-sidebar-primary-foreground: oklch(0.99 0 0);
+  --color-sidebar-accent: oklch(0.38 0.16 165);
+  --color-sidebar-accent-foreground: oklch(0.99 0 0);
+  --color-sidebar-border: oklch(0.82 0.03 220);
+  --color-sidebar-ring: oklch(0.48 0.22 200);
+  color-scheme: light;
+}
+
+@utility glass {
+  background-color: rgb(15 23 42 / 0.4);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgb(34 211 238 / 0.2);
+  box-shadow:
+    0 20px 25px -5px rgb(0 0 0 / 0.1),
+    0 8px 10px -6px rgb(0 0 0 / 0.1),
+    0 0 20px rgb(34 211 238 / 0.1);
+}
+
+@utility glass-node {
+  background-color: rgb(15 23 42 / 0.6);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgb(34 211 238 / 0.2);
+}
+
+@utility node-selected {
+  animation: glow 2s ease-in-out infinite;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── DARK body ── */
+body {
+  background: linear-gradient(
+    135deg,
+    rgb(2 6 23) 0%,
+    rgb(8 15 40) 40%,
+    rgb(4 40 35) 100%
+  );
+  color: var(--color-foreground);
+  font-family: var(--font-family-sans);
+  min-height: 100vh;
+  transition:
+    background 0.4s ease,
+    color 0.3s ease;
+}
+
+/* ── LIGHT body — deep slate-blue to teal, high contrast ── */
+html.light body {
+  background: linear-gradient(
+    135deg,
+    rgb(15 23 42) 0%,
+    rgb(17 50 80) 40%,
+    rgb(6 60 55) 100%
+  ) !important;
+}
+
+/* Light mode — cards and panels become crisp white/light */
+html.light .glass {
+  background-color: rgb(248 250 252 / 0.85) !important;
+  border: 1px solid rgb(14 165 233 / 0.3) !important;
+  box-shadow:
+    0 4px 24px rgb(0 0 0 / 0.15),
+    0 0 0 1px rgb(14 165 233 / 0.1) !important;
+}
+
+html.light .glass-node {
+  background-color: rgb(248 250 252 / 0.9) !important;
+  border-top: 1px solid rgb(14 165 233 / 0.25) !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+h1 {
+  font-size: 1.875rem;
+}
+h2 {
+  font-size: 1.5rem;
+}
+h3 {
+  font-size: 1.25rem;
+}
+
+a {
+  color: var(--color-primary);
+  transition: color 0.2s;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background-color: rgb(2 6 23 / 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgb(34 211 238 / 0.4);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(34 211 238 / 0.6);
+}
+
+html.light ::-webkit-scrollbar-track {
+  background-color: rgb(15 23 42 / 0.3);
+}
+html.light ::-webkit-scrollbar-thumb {
+  background-color: rgb(14 165 233 / 0.5);
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(14 165 233 / 0.8);
+}
+
+/* ── React Flow ── */
+.react-flow {
+  background: transparent;
+}
+
+.react-flow__background {
+  background-color: rgb(2 6 23 / 0.5);
+}
+html.light .react-flow__background {
+  background-color: rgb(8 20 50 / 0.3);
+}
+
+.react-flow__edge-path {
+  stroke: rgb(34 211 238 / 0.6);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px rgb(34 211 238 / 0.4));
+}
+html.light .react-flow__edge-path {
+  stroke: rgb(56 189 248 / 0.9);
+  filter: drop-shadow(0 0 5px rgb(56 189 248 / 0.5));
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: rgb(34 211 238);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgb(34 211 238 / 0.6));
+}
+
+.react-flow__handle {
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid rgb(34 211 238) !important;
+  background: rgb(6 182 212) !important;
+  box-shadow: 0 0 10px rgb(34 211 238 / 0.6);
+}
+html.light .react-flow__handle {
+  border-color: rgb(14 165 233) !important;
+  background: rgb(56 189 248) !important;
+  box-shadow: 0 0 12px rgb(14 165 233 / 0.6);
+}
+
+.react-flow__controls {
+  background-color: rgb(15 23 42 / 0.4);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgb(34 211 238 / 0.2);
+}
+html.light .react-flow__controls {
+  background-color: rgb(248 250 252 / 0.9);
+  border: 1px solid rgb(14 165 233 / 0.3);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+
+.react-flow__controls-button {
+  background-color: rgb(30 41 59 / 0.5);
+  border-color: rgb(34 211 238 / 0.3);
+  color: rgb(34 211 238);
+  border-width: 0;
+}
+.react-flow__controls-button:hover {
+  background-color: rgb(34 211 238 / 0.2);
+}
+html.light .react-flow__controls-button {
+  background-color: transparent;
+  color: rgb(14 165 233);
+}
+html.light .react-flow__controls-button:hover {
+  background-color: rgb(14 165 233 / 0.12);
+}
+
+.react-flow__minimap {
+  background-color: rgb(15 23 42 / 0.4);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgb(34 211 238 / 0.2);
+}
+html.light .react-flow__minimap {
+  background-color: rgb(248 250 252 / 0.9);
+  border: 1px solid rgb(14 165 233 / 0.3);
+}
+
+.react-flow__minimap-mask {
+  fill: rgb(6 78 59 / 0.6);
+}
+.react-flow__minimap-node {
+  fill: rgb(34 211 238 / 0.4);
+  stroke: rgb(34 211 238);
+}
+.react-flow__attribution {
+  display: none !important;
+}
+
+.react-flow__selection {
+  background: rgba(34, 211, 238, 0.1);
+  border: 2px solid rgb(34 211 238);
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(34, 211, 238, 0.5);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.react-flow__pane {
+  cursor: grab;
+}
+.react-flow__pane.dragging {
+  cursor: grabbing;
+}
+.react-flow__node {
+  cursor: move;
+}
+.react-flow__node.selected {
+  cursor: move;
+}
+.react-flow__node:hover {
+  cursor: move;
+}
+.react-flow__handle {
+  cursor: crosshair;
+}
+.react-flow__handle:hover {
+  cursor: crosshair;
+}
+.react-flow__edge {
+  cursor: pointer;
+}
+.react-flow__edge.selected {
+  cursor: pointer;
+}
+.react-flow__selectionpane {
+  cursor: crosshair;
 }
