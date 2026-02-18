@@ -12,6 +12,8 @@ import {
   ChevronUp,
   ChevronDown,
   Wallet,
+  History,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,10 +33,16 @@ import {
 } from "@/components/ui/dialog";
 import { RunFlowDialog } from "./RunFlowDialog";
 import { WalletConnectModal } from "@/app/components/WalletConnectModal";
+import { ExecutionHistoryPanel } from "./ExecutionHistoryPanel";
+import { ScheduleDialog } from "./ScheduleDialog";
 
 export function FlowControls() {
   const { nodes, edges, setNodes, setEdges } = useFlowStore();
-  const { isConnected, walletAddress } = useWallet();
+
+  // New multi-wallet store: call as functions, not values
+  const isConnected = useWallet((s) => s.isConnected());
+  const walletAddress = useWallet((s) => s.walletAddress());
+  const wallets = useWallet((s) => s.wallets);
 
   const [flowName, setFlowName] = useState("My DeFi Flow");
   const [flowDescription, setFlowDescription] = useState(
@@ -45,8 +53,9 @@ export function FlowControls() {
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
-  // Draggable + minimizable
   const [minimized, setMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [initialized, setInitialized] = useState(false);
@@ -138,9 +147,7 @@ export function FlowControls() {
         setEdges(flow.edges);
         setFlowName(flow.name);
         setFlowDescription(flow.description);
-      } catch {
-        // silently fail
-      }
+      } catch {}
     }
   };
 
@@ -180,7 +187,6 @@ export function FlowControls() {
           userSelect: "none",
         }}
       >
-        {/* Glow border */}
         <div
           style={{
             borderRadius: 14,
@@ -247,7 +253,6 @@ export function FlowControls() {
                   padding: 2,
                   borderRadius: 4,
                 }}
-                title={minimized ? "Expand" : "Minimize"}
               >
                 {minimized ? (
                   <ChevronUp size={13} />
@@ -257,7 +262,7 @@ export function FlowControls() {
               </button>
             </div>
 
-            {/* Toolbar buttons */}
+            {/* Buttons */}
             {!minimized && (
               <div
                 style={{
@@ -384,7 +389,27 @@ export function FlowControls() {
 
                 <Divider />
 
-                {/* Wallet status OR connect button */}
+                {/* Schedule */}
+                <ToolBtn
+                  title="Schedule Flow"
+                  onClick={() => setScheduleOpen((v) => !v)}
+                  active={scheduleOpen}
+                >
+                  <Clock size={15} />
+                </ToolBtn>
+
+                {/* History */}
+                <ToolBtn
+                  title="Execution History"
+                  onClick={() => setHistoryOpen((v) => !v)}
+                  active={historyOpen}
+                >
+                  <History size={15} />
+                </ToolBtn>
+
+                <Divider />
+
+                {/* Wallet — show address + multi-wallet count if connected */}
                 {isConnected && walletAddress ? (
                   <div
                     style={{
@@ -396,7 +421,10 @@ export function FlowControls() {
                       borderRadius: 7,
                       background: "rgba(34,197,94,0.08)",
                       border: "1px solid rgba(34,197,94,0.2)",
+                      cursor: "pointer",
                     }}
+                    onClick={() => setWalletModalOpen(true)}
+                    title="Manage wallets"
                   >
                     <div
                       style={{
@@ -418,6 +446,22 @@ export function FlowControls() {
                     >
                       {truncateAddress(walletAddress)}
                     </span>
+                    {/* Badge when multiple wallets */}
+                    {wallets.length > 1 && (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          padding: "1px 5px",
+                          borderRadius: 999,
+                          background: "rgba(34,211,238,0.15)",
+                          color: "#22d3ee",
+                          border: "1px solid rgba(34,211,238,0.25)",
+                        }}
+                      >
+                        {wallets.length}
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <ToolBtn
@@ -452,13 +496,17 @@ export function FlowControls() {
         </div>
       </div>
 
-      {/* Run flow dialog */}
+      {historyOpen && (
+        <ExecutionHistoryPanel onClose={() => setHistoryOpen(false)} />
+      )}
+      <ScheduleDialog
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+      />
       <RunFlowDialog
         open={runDialogOpen}
         onClose={() => setRunDialogOpen(false)}
       />
-
-      {/* Wallet connect modal */}
       <WalletConnectModal
         open={walletModalOpen}
         onOpenChange={setWalletModalOpen}
@@ -466,8 +514,6 @@ export function FlowControls() {
     </>
   );
 }
-
-// ── Helpers ──────────────────────────────────────────────────
 
 function Divider() {
   return (
@@ -491,6 +537,7 @@ function ToolBtn({
   highlight,
   walletBtn,
   asLabel,
+  active,
 }: {
   children: React.ReactNode;
   title?: string;
@@ -499,6 +546,7 @@ function ToolBtn({
   highlight?: boolean;
   walletBtn?: boolean;
   asLabel?: boolean;
+  active?: boolean;
 }) {
   const base: React.CSSProperties = {
     display: "flex",
@@ -508,15 +556,17 @@ function ToolBtn({
     height: 32,
     borderRadius: 7,
     border: "none",
-    background: "transparent",
+    background: active ? "rgba(56,189,248,0.15)" : "transparent",
     cursor: disabled ? "not-allowed" : "pointer",
     color: highlight
       ? disabled
         ? "rgba(34,197,94,0.3)"
         : "rgb(34,197,94)"
-      : walletBtn
-        ? "rgba(56,189,248,0.7)"
-        : "rgba(148,163,184,0.8)",
+      : active
+        ? "rgb(56,189,248)"
+        : walletBtn
+          ? "rgba(56,189,248,0.7)"
+          : "rgba(148,163,184,0.8)",
     opacity: disabled ? 0.4 : 1,
     transition: "background 0.15s, color 0.15s",
   };

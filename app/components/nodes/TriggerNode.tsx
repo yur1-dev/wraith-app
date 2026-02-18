@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Clock, MoreVertical } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
@@ -14,10 +14,11 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((state) => state.updateNodeData);
 
   const customColor = data.customColor as string | undefined;
-  const defaultColor = "#a855f7"; // purple-500
+  const defaultColor = "#a855f7";
   const accentColor = customColor || defaultColor;
 
   const [showColorMenu, setShowColorMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleCloseMenus = () => setShowColorMenu(false);
@@ -25,6 +26,19 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
     return () =>
       window.removeEventListener("closeColorMenus", handleCloseMenus);
   }, []);
+
+  // Close on outside click without blocking canvas
+  useEffect(() => {
+    if (!showColorMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Element)) {
+        setShowColorMenu(false);
+      }
+    };
+    // Use capture so we catch clicks before ReactFlow does
+    document.addEventListener("mousedown", handleClick, true);
+    return () => document.removeEventListener("mousedown", handleClick, true);
+  }, [showColorMenu]);
 
   const presetColors = [
     "#a855f7",
@@ -57,10 +71,12 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
           : undefined,
       }}
     >
+      {/* Color menu button */}
       <button
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
-          setShowColorMenu(!showColorMenu);
+          setShowColorMenu((prev) => !prev);
         }}
         className="absolute top-2 right-2 z-10 w-6 h-6 rounded flex items-center justify-center
           bg-black/30 hover:bg-black/50 backdrop-blur-sm transition-all cursor-pointer"
@@ -68,80 +84,76 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
         <MoreVertical className="w-3.5 h-3.5 text-white" />
       </button>
 
+      {/* Color menu — no fixed overlay, uses ref-based outside click */}
       {showColorMenu && (
-        <>
-          <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowColorMenu(false)}
-            onMouseDown={() => setShowColorMenu(false)}
-          />
-          <div
-            className="absolute top-0 left-[calc(100%+8px)] z-[100] w-48 rounded-lg overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(15, 23, 42, 0.98)",
-              border: "1px solid rgba(148, 163, 184, 0.2)",
-              backdropFilter: "blur(20px)",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.8)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="p-3 space-y-2">
-              <div className="text-[9px] font-mono font-bold tracking-widest text-cyan-400 uppercase">
-                Node Color
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={accentColor}
-                  onChange={(e) => handleColorChange(e.target.value)}
-                  className="w-10 h-10 rounded border-2 border-slate-600 cursor-pointer hover:border-cyan-500/50 transition-all"
-                  style={{ backgroundColor: accentColor }}
-                />
-                <input
-                  type="text"
-                  value={accentColor.toUpperCase()}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) handleColorChange(val);
-                  }}
-                  className="flex-1 h-8 px-2 bg-slate-900/80 border border-slate-700 rounded 
-                    text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none tracking-wider"
-                  maxLength={7}
-                />
-              </div>
-              <div className="text-[8px] font-mono font-semibold tracking-widest text-slate-500 uppercase">
-                Quick Presets
-              </div>
-              <div className="grid grid-cols-5 gap-1">
-                {presetColors.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => handleColorChange(color)}
-                    className={`w-full aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer
-                      ${accentColor === color ? "border-white ring-1 ring-white/30 scale-105" : "border-slate-700/50"}`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-              {customColor && (
-                <button
-                  onClick={() => {
-                    handleColorChange(undefined);
-                    setShowColorMenu(false);
-                  }}
-                  className="w-full py-1.5 text-[8px] font-mono text-slate-400 hover:text-cyan-400 
-                    border border-slate-700 hover:border-cyan-500 rounded transition-all
-                    hover:bg-slate-800/50 cursor-pointer"
-                >
-                  RESET
-                </button>
-              )}
+        <div
+          ref={menuRef}
+          className="absolute top-0 left-[calc(100%+8px)] z-[100] w-48 rounded-lg overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(15, 23, 42, 0.98)",
+            border: "1px solid rgba(148, 163, 184, 0.2)",
+            backdropFilter: "blur(20px)",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.8)",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-3 space-y-2">
+            <div className="text-[9px] font-mono font-bold tracking-widest text-cyan-400 uppercase">
+              Node Color
             </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accentColor}
+                onChange={(e) => handleColorChange(e.target.value)}
+                className="w-10 h-10 rounded border-2 border-slate-600 cursor-pointer hover:border-cyan-500/50 transition-all"
+                style={{ backgroundColor: accentColor }}
+              />
+              <input
+                type="text"
+                value={accentColor.toUpperCase()}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) handleColorChange(val);
+                }}
+                className="flex-1 h-8 px-2 bg-slate-900/80 border border-slate-700 rounded
+                  text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none tracking-wider"
+                maxLength={7}
+              />
+            </div>
+            <div className="text-[8px] font-mono font-semibold tracking-widest text-slate-500 uppercase">
+              Quick Presets
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {presetColors.map((color) => (
+                <button
+                  key={color}
+                  onClick={() => handleColorChange(color)}
+                  className={`w-full aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer
+                    ${accentColor === color ? "border-white ring-1 ring-white/30 scale-105" : "border-slate-700/50"}`}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+            {customColor && (
+              <button
+                onClick={() => {
+                  handleColorChange(undefined);
+                  setShowColorMenu(false);
+                }}
+                className="w-full py-1.5 text-[8px] font-mono text-slate-400 hover:text-cyan-400
+                  border border-slate-700 hover:border-cyan-500 rounded transition-all
+                  hover:bg-slate-800/50 cursor-pointer"
+              >
+                RESET
+              </button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
+      {/* Header */}
       <div
         className="p-3 select-none rounded-t-xl"
         style={{
@@ -154,6 +166,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
+      {/* Body */}
       <div className="bg-slate-900/95 backdrop-blur-xl p-3 border-t border-white/5 select-none rounded-b-xl">
         <div className="space-y-1">
           <div className="text-xs font-medium" style={{ color: accentColor }}>

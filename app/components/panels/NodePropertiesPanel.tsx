@@ -192,8 +192,15 @@ const CHAIN_OPTIONS = (
 );
 
 export function NodePropertiesPanel() {
-  const { selectedNode, setSelectedNode, updateNodeData, deleteNode } =
-    useFlowStore();
+  // ✅ KEY FIX: Derive live selectedNode from nodes array — never stale
+  const selectedNode = useFlowStore((s) =>
+    s.selectedNodeId
+      ? (s.nodes.find((n) => n.id === s.selectedNodeId) ?? null)
+      : null,
+  );
+  const setSelectedNode = useFlowStore((s) => s.setSelectedNode);
+  const updateNodeData = useFlowStore((s) => s.updateNodeData);
+  const deleteNode = useFlowStore((s) => s.deleteNode);
 
   if (!selectedNode) return null;
 
@@ -377,6 +384,25 @@ export function NodePropertiesPanel() {
                 <SelectItem value="across">Across</SelectItem>
               </StyledSelect>
             </FieldGroup>
+            <div className="grid grid-cols-2 gap-2">
+              <FieldGroup>
+                <FieldLabel>Token</FieldLabel>
+                <StyledInput
+                  placeholder="USDC"
+                  value={str(selectedNode.data.token)}
+                  onChange={(e) => updateField("token", e.target.value)}
+                />
+              </FieldGroup>
+              <FieldGroup>
+                <FieldLabel>Amount</FieldLabel>
+                <StyledInput
+                  type="number"
+                  placeholder="100"
+                  value={str(selectedNode.data.amount)}
+                  onChange={(e) => updateField("amount", e.target.value)}
+                />
+              </FieldGroup>
+            </div>
           </>
         );
 
@@ -419,6 +445,16 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("message", e.target.value)}
               />
             </FieldGroup>
+            {selectedNode.data.alertType === "telegram" && (
+              <FieldGroup>
+                <FieldLabel>Chat ID</FieldLabel>
+                <StyledInput
+                  placeholder="-100123456789"
+                  value={str(selectedNode.data.chatId)}
+                  onChange={(e) => updateField("chatId", e.target.value)}
+                />
+              </FieldGroup>
+            )}
             {selectedNode.data.alertType === "webhook" && (
               <FieldGroup>
                 <FieldLabel>Webhook URL</FieldLabel>
@@ -447,6 +483,16 @@ export function NodePropertiesPanel() {
                 <SelectItem value="custom">Custom</SelectItem>
               </StyledSelect>
             </FieldGroup>
+            {selectedNode.data.conditionType === "price" && (
+              <FieldGroup>
+                <FieldLabel>Token</FieldLabel>
+                <StyledInput
+                  placeholder="ETH"
+                  value={str(selectedNode.data.token)}
+                  onChange={(e) => updateField("token", e.target.value)}
+                />
+              </FieldGroup>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
                 <FieldLabel>Operator</FieldLabel>
@@ -470,6 +516,16 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             </div>
+            {selectedNode.data.conditionType === "custom" && (
+              <FieldGroup>
+                <FieldLabel>Expression</FieldLabel>
+                <StyledInput
+                  placeholder="balance > 1000 && gas < 20"
+                  value={str(selectedNode.data.expression)}
+                  onChange={(e) => updateField("expression", e.target.value)}
+                />
+              </FieldGroup>
+            )}
           </>
         );
 
@@ -486,6 +542,7 @@ export function NodePropertiesPanel() {
                 <SelectItem value="phantom">Phantom</SelectItem>
                 <SelectItem value="rabby">Rabby</SelectItem>
                 <SelectItem value="coinbase">Coinbase Wallet</SelectItem>
+                <SelectItem value="walletconnect">WalletConnect</SelectItem>
               </StyledSelect>
             </FieldGroup>
             <FieldGroup>
@@ -496,6 +553,15 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("address", e.target.value)}
                 className="font-mono"
               />
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Chain</FieldLabel>
+              <StyledSelect
+                value={str(selectedNode.data.chain, "ethereum")}
+                onValueChange={(v) => updateField("chain", v)}
+              >
+                {CHAIN_OPTIONS}
+              </StyledSelect>
             </FieldGroup>
           </>
         );
@@ -511,6 +577,8 @@ export function NodePropertiesPanel() {
               >
                 <SelectItem value="lend">Lend</SelectItem>
                 <SelectItem value="stake">Stake</SelectItem>
+                <SelectItem value="unstake">Unstake</SelectItem>
+                <SelectItem value="withdraw">Withdraw</SelectItem>
               </StyledSelect>
             </FieldGroup>
             <div className="grid grid-cols-2 gap-2">
@@ -543,6 +611,16 @@ export function NodePropertiesPanel() {
                 <SelectItem value="kamino">Kamino (Solana)</SelectItem>
                 <SelectItem value="marginfi">MarginFi (Solana)</SelectItem>
                 <SelectItem value="lido">Lido</SelectItem>
+                <SelectItem value="jito">Jito (Solana)</SelectItem>
+              </StyledSelect>
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Chain</FieldLabel>
+              <StyledSelect
+                value={str(selectedNode.data.chain, "ethereum")}
+                onValueChange={(v) => updateField("chain", v)}
+              >
+                {CHAIN_OPTIONS}
               </StyledSelect>
             </FieldGroup>
           </>
@@ -561,6 +639,7 @@ export function NodePropertiesPanel() {
                 <SelectItem value="like">Like Tweet</SelectItem>
                 <SelectItem value="retweet">Retweet</SelectItem>
                 <SelectItem value="quote">Quote Tweet</SelectItem>
+                <SelectItem value="tweet">Post Tweet</SelectItem>
               </StyledSelect>
             </FieldGroup>
             <FieldGroup>
@@ -571,6 +650,18 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("target", e.target.value)}
               />
             </FieldGroup>
+            {(selectedNode.data.taskType === "quote" ||
+              selectedNode.data.taskType === "tweet") && (
+              <FieldGroup>
+                <FieldLabel>Tweet Text</FieldLabel>
+                <StyledTextarea
+                  rows={3}
+                  placeholder="GM frens 🌅"
+                  value={str(selectedNode.data.tweetText)}
+                  onChange={(e) => updateField("tweetText", e.target.value)}
+                />
+              </FieldGroup>
+            )}
           </>
         );
 
@@ -586,6 +677,7 @@ export function NodePropertiesPanel() {
                 <SelectItem value="join">Join Server</SelectItem>
                 <SelectItem value="react">React to Message</SelectItem>
                 <SelectItem value="message">Send Message</SelectItem>
+                <SelectItem value="role">Get Role</SelectItem>
               </StyledSelect>
             </FieldGroup>
             <FieldGroup>
@@ -596,6 +688,17 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("serverId", e.target.value)}
               />
             </FieldGroup>
+            {(selectedNode.data.taskType === "message" ||
+              selectedNode.data.taskType === "react") && (
+              <FieldGroup>
+                <FieldLabel>Channel ID</FieldLabel>
+                <StyledInput
+                  placeholder="123456789"
+                  value={str(selectedNode.data.channelId)}
+                  onChange={(e) => updateField("channelId", e.target.value)}
+                />
+              </FieldGroup>
+            )}
             {selectedNode.data.taskType === "message" && (
               <FieldGroup>
                 <FieldLabel>Message</FieldLabel>
@@ -628,6 +731,17 @@ export function NodePropertiesPanel() {
                 value={str(selectedNode.data.campaignUrl)}
                 onChange={(e) => updateField("campaignUrl", e.target.value)}
               />
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Action</FieldLabel>
+              <StyledSelect
+                value={str(selectedNode.data.action, "complete")}
+                onValueChange={(v) => updateField("action", v)}
+              >
+                <SelectItem value="complete">Complete Tasks</SelectItem>
+                <SelectItem value="claim">Claim OAT</SelectItem>
+                <SelectItem value="check">Check Eligibility</SelectItem>
+              </StyledSelect>
             </FieldGroup>
           </>
         );
@@ -664,6 +778,35 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             </div>
+            <FieldGroup>
+              <FieldLabel>Chain</FieldLabel>
+              <StyledSelect
+                value={str(selectedNode.data.chain, "arbitrum")}
+                onValueChange={(v) => updateField("chain", v)}
+              >
+                {CHAIN_OPTIONS}
+              </StyledSelect>
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>DEX</FieldLabel>
+              <StyledSelect
+                value={str(selectedNode.data.dex, "uniswap")}
+                onValueChange={(v) => updateField("dex", v)}
+              >
+                <SelectItem value="uniswap">Uniswap</SelectItem>
+                <SelectItem value="jupiter">Jupiter</SelectItem>
+                <SelectItem value="raydium">Raydium</SelectItem>
+                <SelectItem value="pancakeswap">PancakeSwap</SelectItem>
+              </StyledSelect>
+            </FieldGroup>
+            <StyledCheckbox
+              id="randomize-vol"
+              checked={bool(selectedNode.data.randomizeAmounts)}
+              onChange={(e) =>
+                updateField("randomizeAmounts", e.target.checked)
+              }
+              label="Randomize amounts"
+            />
           </>
         );
 
@@ -687,6 +830,21 @@ export function NodePropertiesPanel() {
                 className="font-mono"
               />
             </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Chain</FieldLabel>
+              <StyledSelect
+                value={str(selectedNode.data.chain, "ethereum")}
+                onValueChange={(v) => updateField("chain", v)}
+              >
+                {CHAIN_OPTIONS}
+              </StyledSelect>
+            </FieldGroup>
+            <StyledCheckbox
+              id="auto-sell"
+              checked={bool(selectedNode.data.autoSell)}
+              onChange={(e) => updateField("autoSell", e.target.checked)}
+              label="Auto-sell after claim"
+            />
           </>
         );
 
@@ -712,6 +870,7 @@ export function NodePropertiesPanel() {
                   <SelectItem value="seconds">Seconds</SelectItem>
                   <SelectItem value="minutes">Minutes</SelectItem>
                   <SelectItem value="hours">Hours</SelectItem>
+                  <SelectItem value="days">Days</SelectItem>
                 </StyledSelect>
               </FieldGroup>
             </div>
@@ -755,6 +914,25 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("breakCondition", e.target.value)}
               />
             </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Delay Between Loops</FieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                <StyledInput
+                  type="number"
+                  placeholder="0"
+                  value={str(selectedNode.data.loopDelay)}
+                  onChange={(e) => updateField("loopDelay", e.target.value)}
+                />
+                <StyledSelect
+                  value={str(selectedNode.data.loopDelayUnit, "seconds")}
+                  onValueChange={(v) => updateField("loopDelayUnit", v)}
+                >
+                  <SelectItem value="seconds">Seconds</SelectItem>
+                  <SelectItem value="minutes">Minutes</SelectItem>
+                  <SelectItem value="hours">Hours</SelectItem>
+                </StyledSelect>
+              </div>
+            </FieldGroup>
           </>
         );
 
@@ -779,7 +957,17 @@ export function NodePropertiesPanel() {
                 <SelectItem value="coinmarketcap">CoinMarketCap</SelectItem>
                 <SelectItem value="dexscreener">DexScreener</SelectItem>
                 <SelectItem value="jupiter">Jupiter (Solana)</SelectItem>
+                <SelectItem value="chainlink">Chainlink Oracle</SelectItem>
               </StyledSelect>
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Alert Threshold ($)</FieldLabel>
+              <StyledInput
+                type="number"
+                placeholder="optional"
+                value={str(selectedNode.data.alertThreshold)}
+                onChange={(e) => updateField("alertThreshold", e.target.value)}
+              />
             </FieldGroup>
           </>
         );
@@ -807,6 +995,26 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             </div>
+            <FieldGroup>
+              <FieldLabel>Strategy</FieldLabel>
+              <StyledSelect
+                value={str(selectedNode.data.strategy, "wait")}
+                onValueChange={(v) => updateField("strategy", v)}
+              >
+                <SelectItem value="wait">Wait for low gas</SelectItem>
+                <SelectItem value="flashbots">Use Flashbots</SelectItem>
+                <SelectItem value="eip1559">EIP-1559 optimized</SelectItem>
+              </StyledSelect>
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Chain</FieldLabel>
+              <StyledSelect
+                value={str(selectedNode.data.chain, "ethereum")}
+                onValueChange={(v) => updateField("chain", v)}
+              >
+                {CHAIN_OPTIONS}
+              </StyledSelect>
+            </FieldGroup>
           </>
         );
 

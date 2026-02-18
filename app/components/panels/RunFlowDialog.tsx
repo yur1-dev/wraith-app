@@ -16,6 +16,8 @@ import {
   Activity,
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
+import { FeeConfirmStep } from "@/app/components/panels/FeeConfirmStep";
+import { getFeeDisplay } from "@/lib/fee/feeCollector";
 import { useWallet } from "@/lib/hooks/useWallet";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -30,10 +32,9 @@ interface NodeResult {
   output?: Record<string, unknown>;
   error?: string;
   signature?: string;
-  duration?: number; // ms
+  duration?: number;
 }
 
-// Separate type for the raw API response items (which use `success: boolean`)
 interface ApiNodeResult {
   nodeId: string;
   success: boolean;
@@ -77,11 +78,20 @@ const NODE_META: Record<
 
 export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
   const { nodes, edges } = useFlowStore();
-  const { walletAddress, walletType, isConnected } = useWallet();
 
-  const [phase, setPhase] = useState<"ready" | "running" | "done">("ready");
+  // ── Multi-wallet: pull walletAddress/walletType as getter functions,
+  //    and grab the full wallets array for passing to the execute API
+  const walletAddress = useWallet((s) => s.walletAddress());
+  const walletType = useWallet((s) => s.walletType());
+  const wallets = useWallet((s) => s.wallets);
+  const isConnected = useWallet((s) => s.isConnected());
+
+  const [phase, setPhase] = useState<"ready" | "fee" | "running" | "done">(
+    "ready",
+  );
   const [nodeResults, setNodeResults] = useState<NodeResult[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [feeSignature, setFeeSignature] = useState<string | null>(null);
   const [flowId, setFlowId] = useState<string | null>(null);
   const [overallStatus, setOverallStatus] = useState<
     "completed" | "failed" | null
@@ -99,6 +109,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
       setExpandedNodes(new Set());
       setFlowId(null);
       setOverallStatus(null);
+      setFeeSignature(null);
       setElapsedMs(0);
     }
   }, [open]);
@@ -130,6 +141,20 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
 
   const handleRun = async () => {
     if (!isConnected || !walletAddress) return;
+    setPhase("fee");
+  };
+
+  const handleFeeSkipped = () => {
+    setFeeSignature("dev-skip");
+    startExecution();
+  };
+
+  const handleFeePaid = (signature: string) => {
+    setFeeSignature(signature);
+    startExecution();
+  };
+
+  const startExecution = async () => {
     setPhase("running");
 
     // Init all nodes as pending
@@ -154,6 +179,12 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
           edges,
           walletAddress,
           walletType,
+          // Pass all connected wallets so multi-wallet nodes use every wallet
+          allWallets: wallets.map((w) => ({
+            address: w.address,
+            type: w.type,
+            label: w.label,
+          })),
         }),
       });
 
@@ -174,8 +205,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
 
       setFlowId(data.flowId);
 
-      // FIX #1 & #2: Type the API results separately as ApiNodeResult[]
-      // so we can access `.success` without conflicting with NodeResult's `.status`
       const results: ApiNodeResult[] = data.results;
 
       for (let i = 0; i < results.length; i++) {
@@ -188,16 +217,14 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
           ),
         );
 
-        // Small delay for visual effect
         await new Promise((resolve) => setTimeout(resolve, 400));
 
-        // Mark as done — r.success is now valid on ApiNodeResult
         setNodeResults((prev) =>
           prev.map((n) =>
             n.nodeId === r.nodeId
               ? {
                   ...n,
-                  status: r.success ? "success" : "failed", // FIX #1
+                  status: r.success ? "success" : "failed",
                   output: r.output,
                   error: r.error,
                   signature: r.signature,
@@ -207,9 +234,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
           ),
         );
 
-        // If failed, mark remaining as skipped
         if (!r.success) {
-          // FIX #2
           await new Promise((resolve) => setTimeout(resolve, 200));
           setNodeResults((prev) =>
             prev.map((n) =>
@@ -222,7 +247,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
         await new Promise((resolve) => setTimeout(resolve, 150));
       }
 
-      setOverallStatus(data.status);
+      setOverallStatus(data.status ?? (data.success ? "completed" : "failed"));
       setPhase("done");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -257,12 +282,15 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : "";
 
+  // Show wallet count badge when multiple wallets connected
+  const walletCountLabel =
+    wallets.length > 1 ? ` · ${wallets.length} wallets` : "";
+
   if (!open) return null;
 
   return (
-    // FIX #4: z-[99999] → z-99999 (Tailwind canonical class)
     <div
-      className="fixed inset-0 z-99999 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
     >
       <div
@@ -284,7 +312,9 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                 ? overallStatus === "completed"
                   ? "linear-gradient(90deg, transparent, #22c55e, #16a34a, transparent)"
                   : "linear-gradient(90deg, transparent, #ef4444, #dc2626, transparent)"
-                : "linear-gradient(90deg, transparent, #22d3ee, #818cf8, transparent)",
+                : phase === "fee"
+                  ? "linear-gradient(90deg, transparent, #c084fc, #818cf8, transparent)"
+                  : "linear-gradient(90deg, transparent, #22d3ee, #818cf8, transparent)",
           }}
         />
 
@@ -321,11 +351,13 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
               <h2 className="text-sm font-bold text-white">
                 {phase === "ready"
                   ? "Run Flow"
-                  : phase === "running"
-                    ? "Executing Flow..."
-                    : overallStatus === "completed"
-                      ? "Flow Completed ✅"
-                      : "Flow Failed ❌"}
+                  : phase === "fee"
+                    ? "Protocol Fee"
+                    : phase === "running"
+                      ? "Executing Flow..."
+                      : overallStatus === "completed"
+                        ? "Flow Completed ✅"
+                        : "Flow Failed ❌"}
               </h2>
               {phase === "running" && (
                 <p className="text-[10px] text-cyan-400 font-mono">
@@ -382,6 +414,19 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
             <span className="text-[11px] font-mono text-slate-400">
               {truncAddr}
             </span>
+            {/* Multi-wallet badge */}
+            {wallets.length > 1 && (
+              <span
+                className="text-[9px] px-1.5 py-0.5 rounded-full font-bold"
+                style={{
+                  background: "rgba(34,211,238,0.12)",
+                  color: "#22d3ee",
+                  border: "1px solid rgba(34,211,238,0.25)",
+                }}
+              >
+                +{wallets.length - 1} more
+              </span>
+            )}
             <div
               className="w-1.5 h-1.5 rounded-full"
               style={{ background: "#22c55e", boxShadow: "0 0 6px #22c55e" }}
@@ -391,12 +436,55 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
             <span>{nodes.length} nodes</span>
             <span>·</span>
             <span>{edges.length} connections</span>
+            {wallets.length > 1 && (
+              <>
+                <span>·</span>
+                <span style={{ color: "#22d3ee" }}>
+                  {wallets.length} wallets
+                </span>
+              </>
+            )}
           </div>
         </div>
+
+        {/* FEE STEP */}
+        {phase === "fee" && (
+          <FeeConfirmStep
+            walletType={walletType ?? "metamask"}
+            onFeePaid={handleFeePaid}
+            onSkip={handleFeeSkipped}
+            onCancel={onClose}
+          />
+        )}
 
         {/* READY STATE */}
         {phase === "ready" && (
           <div className="flex-1 overflow-y-auto px-5 py-4">
+            {/* Multi-wallet info banner */}
+            {wallets.length > 1 && (
+              <div
+                className="flex items-start gap-2 p-3 rounded-lg mb-4 text-xs"
+                style={{
+                  background: "rgba(34,211,238,0.05)",
+                  border: "1px solid rgba(34,211,238,0.15)",
+                }}
+              >
+                <span className="text-cyan-400 font-medium shrink-0">👥</span>
+                <div>
+                  <span className="text-cyan-400 font-medium">
+                    {wallets.length} wallets connected
+                  </span>
+                  <span className="text-slate-500">
+                    {" "}
+                    — Multi-Wallet nodes will execute across all of them:{" "}
+                  </span>
+                  <span className="text-slate-400">
+                    {wallets.map((w) => w.label).join(", ")}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <p className="text-xs text-slate-400 mb-4">
               The following nodes will be executed in order:
             </p>
@@ -482,7 +570,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                     onClick={() => hasDetails && toggleExpand(result.nodeId)}
                     style={{ cursor: hasDetails ? "pointer" : "default" }}
                   >
-                    {/* Status icon */}
                     <div className="w-5 h-5 flex items-center justify-center shrink-0">
                       {result.status === "pending" && (
                         <Clock
@@ -515,15 +602,10 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                       )}
                     </div>
 
-                    {/* Index */}
                     <span className="text-[10px] text-slate-600 font-mono w-4 shrink-0">
                       {i + 1}
                     </span>
-
-                    {/* Emoji */}
                     <span className="text-sm shrink-0">{meta.emoji}</span>
-
-                    {/* Label */}
                     <span
                       className="text-xs flex-1"
                       style={{
@@ -542,14 +624,12 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                       {result.nodeLabel}
                     </span>
 
-                    {/* Duration */}
                     {result.duration && (
                       <span className="text-[10px] font-mono text-slate-600 shrink-0">
                         {formatMs(result.duration)}
                       </span>
                     )}
 
-                    {/* Expand arrow */}
                     {hasDetails && (
                       <div style={{ color: "rgba(148,163,184,0.4)" }}>
                         {isExpanded ? (
@@ -588,7 +668,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                           <span className="text-[10px] text-cyan-400 font-mono truncate flex-1">
                             {result.signature}
                           </span>
-                          {/* FIX #3: removed invalid `shrink: 0` from style prop */}
                           <ExternalLink
                             size={10}
                             className="shrink-0"
@@ -612,7 +691,11 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                             .map(([k, v]) => (
                               <div key={k} className="flex gap-2">
                                 <span style={{ color: "#818cf8" }}>{k}:</span>
-                                <span>{String(v)}</span>
+                                <span>
+                                  {typeof v === "object"
+                                    ? JSON.stringify(v, null, 2)
+                                    : String(v)}
+                                </span>
                               </div>
                             ))}
                         </div>
@@ -626,7 +709,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
           </div>
         )}
 
-        {/* Progress bar - running only */}
+        {/* Progress bar */}
         {phase === "running" && (
           <div className="px-5 pb-2 shrink-0">
             <div
@@ -670,8 +753,28 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                 boxShadow: "0 0 20px rgba(34,211,238,0.2)",
               }}
             >
-              <Play size={15} />
+              <Play className="ml-2" size={15} />
               Execute Flow
+              {wallets.length > 1 && (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded-full ml-1"
+                  style={{
+                    background: "rgba(255,255,255,0.15)",
+                    color: "white",
+                  }}
+                >
+                  {wallets.length} wallets
+                </span>
+              )}
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded-full ml-auto mr-2"
+                style={{
+                  background: "rgba(255,255,255,0.12)",
+                  color: "rgba(255,255,255,0.7)",
+                }}
+              >
+                fee: {walletType === "phantom" ? "0.001 SOL" : "0.00079 ETH"}
+              </span>
             </button>
           )}
 
@@ -695,11 +798,12 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
             <div className="flex gap-3">
               <button
                 onClick={() => {
-                  setPhase("ready");
+                  setPhase("fee");
                   setNodeResults([]);
                   setFlowId(null);
                   setOverallStatus(null);
                   setElapsedMs(0);
+                  setFeeSignature(null);
                 }}
                 className="flex-1 h-10 rounded-xl text-sm font-semibold transition-all"
                 style={{

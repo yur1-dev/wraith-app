@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import {
   ReactFlow,
   Background,
@@ -14,7 +14,6 @@ import {
   BackgroundVariant,
   type NodeTypes,
   Panel,
-  PanOnScrollMode,
 } from "@xyflow/react";
 import { TriggerNode } from "./nodes/TriggerNode";
 import { MultiWalletNode } from "./nodes/MultiWalletNode";
@@ -39,6 +38,8 @@ import { NodePropertiesPanel } from "./panels/NodePropertiesPanel";
 import { FlowControls } from "./panels/FlowControls";
 import { Header } from "./Header";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
+import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const nodeTypes: NodeTypes = {
   trigger: TriggerNode,
@@ -64,135 +65,137 @@ const nodeTypes: NodeTypes = {
 export function FlowBuilder() {
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
-
   const setNodes = useFlowStore((s) => s.setNodes);
   const setEdges = useFlowStore((s) => s.setEdges);
   const setSelectedNode = useFlowStore((s) => s.setSelectedNode);
-  const addNode = useFlowStore((s) => s.addNode);
-  const updateNodeData = useFlowStore((s) => s.updateNodeData);
-
-  const nodesWithHandlers = nodes.map((node) => ({
-    ...node,
-    data: {
-      ...node.data,
-      onColorChange: (color: string | undefined) => {
-        updateNodeData(node.id, { customColor: color });
-      },
-    },
-  }));
-
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const deleteNode = useFlowStore((s) => s.deleteNode);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      setNodes(applyNodeChanges(changes, useFlowStore.getState().nodes));
+      setNodes(applyNodeChanges(changes, nodes) as Node[]);
     },
-    [setNodes],
+    [nodes, setNodes],
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      setEdges(applyEdgeChanges(changes, useFlowStore.getState().edges));
+      setEdges(applyEdgeChanges(changes, edges));
     },
-    [setEdges],
+    [edges, setEdges],
   );
 
   const onConnect: OnConnect = useCallback(
     (connection) => {
-      setEdges(addEdge(connection, useFlowStore.getState().edges));
+      setEdges(addEdge(connection, edges));
     },
-    [setEdges],
+    [edges, setEdges],
   );
 
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      window.dispatchEvent(new Event("closeColorMenus"));
       setSelectedNode(node);
     },
     [setSelectedNode],
   );
 
   const onPaneClick = useCallback(() => {
-    window.dispatchEvent(new Event("closeColorMenus"));
-  }, []);
+    setSelectedNode(null);
+  }, [setSelectedNode]);
 
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-  }, []);
+  const deleteSelectedNodes = useCallback(() => {
+    const selectedIds = nodes.filter((n) => n.selected).map((n) => n.id);
+    if (selectedIds.length === 0) return;
+    selectedIds.forEach((id) => deleteNode(id));
+    setSelectedNode(null);
+  }, [nodes, deleteNode, setSelectedNode]);
 
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-
-      const type = event.dataTransfer.getData("application/reactflow");
-      if (!type) return;
-
-      if (!reactFlowWrapper.current) return;
-
-      const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
-
-      const position = {
-        x: event.clientX - reactFlowBounds.left,
-        y: event.clientY - reactFlowBounds.top,
-      };
-
-      addNode(type, position);
-    },
-    [addNode],
-  );
+  const selectedNodesCount = nodes.filter((n) => n.selected).length;
 
   return (
     <div className="h-screen w-full relative">
       <Header />
 
-      <div className="h-full pt-16">
-        <Toolbar />
-        <FlowControls />
-        <NodePropertiesPanel />
+      <div className="absolute inset-0 pt-14">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
+          nodeTypes={nodeTypes}
+          deleteKeyCode={["Backspace", "Delete"]}
+          selectionKeyCode="Control"
+          multiSelectionKeyCode="Control"
+          panOnDrag={true}
+          selectionOnDrag={true}
+          panOnScroll={true}
+          zoomOnScroll={true}
+          zoomOnPinch={true}
+          nodesDraggable={true}
+          nodesConnectable={true}
+          nodesFocusable={true}
+          edgesFocusable={true}
+          elementsSelectable={true}
+          autoPanOnConnect={true}
+          autoPanOnNodeDrag={true}
+          fitView
+          fitViewOptions={{ maxZoom: 1 }}
+          className="bg-transparent w-full h-full"
+          defaultEdgeOptions={{
+            animated: true,
+            style: { stroke: "rgb(56 189 248 / 0.6)", strokeWidth: 2 },
+          }}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={16}
+            size={1}
+            className="opacity-30"
+            color="#22d3ee"
+          />
 
-        <div className="h-full" ref={reactFlowWrapper}>
-          <ReactFlow
-            nodes={nodesWithHandlers}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onPaneClick={onPaneClick}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={nodeTypes}
-            deleteKeyCode={["Backspace", "Delete"]}
-            selectionKeyCode="Control"
-            multiSelectionKeyCode="Control"
-            panOnDrag={true}
-            selectionOnDrag={true}
-            panOnScroll={true}
-            zoomOnScroll={true}
-            zoomOnPinch={true}
-            panOnScrollMode={PanOnScrollMode.Free}
-            nodesDraggable={true}
-            nodesConnectable={true}
-            nodesFocusable={true}
-            edgesFocusable={true}
-            elementsSelectable={true}
-            autoPanOnConnect={true}
-            autoPanOnNodeDrag={true}
-            className="bg-transparent"
-            defaultEdgeOptions={{
-              animated: true,
-              style: { stroke: "rgb(56 189 248 / 0.6)", strokeWidth: 2 },
-            }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background
-              variant={BackgroundVariant.Lines}
-              gap={80}
-              className="opacity-10"
-              color="#22d3ee"
-            />
-          </ReactFlow>
+          {selectedNodesCount > 0 && (
+            <Panel position="bottom-center" className="mb-6">
+              <div
+                className="rounded-xl px-5 py-3 flex items-center gap-4 shadow-2xl"
+                style={{
+                  background: "rgba(20, 26, 42, 0.9)",
+                  border: "1px solid rgba(56, 189, 248, 0.15)",
+                  backdropFilter: "blur(20px)",
+                }}
+              >
+                <span className="text-sm text-cyan-400 font-medium">
+                  {selectedNodesCount} selected
+                </span>
+                <div className="w-px h-5 bg-white/10" />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={deleteSelectedNodes}
+                  className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-medium"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </Button>
+              </div>
+            </Panel>
+          )}
+        </ReactFlow>
+      </div>
+
+      {/* UI panels float above canvas — pointer-events-none on wrapper, restored on children */}
+      <div className="absolute inset-0 pt-14 pointer-events-none">
+        <div className="pointer-events-auto">
+          <Toolbar />
+        </div>
+        <div className="pointer-events-auto">
+          <FlowControls />
+        </div>
+        <div className="pointer-events-auto">
+          <NodePropertiesPanel />
         </div>
       </div>
     </div>

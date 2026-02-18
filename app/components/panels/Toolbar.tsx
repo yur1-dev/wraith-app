@@ -20,7 +20,6 @@ import {
   DollarSign,
   Fuel,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
 import { useState } from "react";
 
@@ -58,9 +57,15 @@ export function Toolbar() {
   };
 
   const handleAddNode = (type: string) => {
-    const randomX = Math.random() * 400 + 200;
-    const randomY = Math.random() * 300 + 150;
-    addNode(type, { x: randomX, y: randomY });
+    addNode({
+      id: `${type}-${Date.now()}`,
+      type,
+      position: {
+        x: Math.random() * 400 + 200,
+        y: Math.random() * 300 + 150,
+      },
+      data: {},
+    });
   };
 
   return (
