@@ -33,6 +33,7 @@ export function FeeConfirmStep({
   const [errorMsg, setErrorMsg] = useState("");
 
   const fee = getFeeDisplay(walletType);
+  //   const isDev = process.env.NODE_ENV === "development";
   const isDev =
     process.env.NODE_ENV === "development" ||
     process.env.NEXT_PUBLIC_DEV_MODE === "true";

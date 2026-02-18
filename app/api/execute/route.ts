@@ -12,7 +12,6 @@ interface ExecuteFlowRequest {
   edges: Edge[];
   walletAddress: string;
   walletType: "phantom" | "metamask";
-  // All connected wallets for multi-wallet nodes
   allWallets?: ConnectedWallet[];
 }
 
@@ -24,6 +23,7 @@ interface NodeResult {
   message: string;
   data?: Record<string, any>;
   duration: number;
+  conditionPassed?: boolean;
 }
 
 interface ExecutionRecord {
@@ -39,10 +39,8 @@ interface ExecutionRecord {
   results: NodeResult[];
 }
 
-// In-memory store — last 50 runs
 const executions = new Map<string, ExecutionRecord>();
-
-// ── Real data helpers ─────────────────────────────────────────────────────────
+type FlowContext = Record<string, any>;
 
 async function fetchTokenPrice(symbol: string): Promise<number | null> {
   const ids: Record<string, string> = {
@@ -101,23 +99,23 @@ async function fetchEthGasPrice(): Promise<{
   }
 }
 
-// ── Node executors ────────────────────────────────────────────────────────────
-
 async function executePriceCheck(
   node: Node,
+  context: FlowContext,
 ): Promise<Omit<NodeResult, "nodeId" | "duration">> {
   const token = (node.data?.token as string) || "ETH";
   const price = await fetchTokenPrice(token);
   if (price !== null) {
-    const threshold = node.data?.threshold as number;
-    const condition = node.data?.condition as string;
+    const threshold = parseFloat(String(node.data?.threshold || "0"));
+    const condition = (node.data?.condition as string) || "above";
     let conditionMet = true;
     let conditionMsg = "";
-    if (threshold && condition) {
+    if (threshold) {
       conditionMet =
         condition === "above" ? price > threshold : price < threshold;
-      conditionMsg = ` — condition (${condition} $${threshold}) ${conditionMet ? "✓ MET" : "✗ NOT MET"}`;
+      conditionMsg = ` — (${condition} $${threshold}) ${conditionMet ? "✓ MET" : "✗ NOT MET"}`;
     }
+    context[node.id] = { token, price, conditionMet, threshold, condition };
     return {
       nodeType: node.type || "priceCheck",
       label: (node.data?.label as string) || "Price Check",
@@ -141,13 +139,153 @@ async function executePriceCheck(
   };
 }
 
+async function executeCondition(
+  node: Node,
+  context: FlowContext,
+): Promise<Omit<NodeResult, "nodeId" | "duration">> {
+  const conditionType = (node.data?.conditionType as string) || "price";
+  const operator = (node.data?.operator as string) || "gt";
+  const threshold = parseFloat(
+    String(node.data?.threshold || node.data?.value || "0"),
+  );
+  const token = (node.data?.token as string) || "ETH";
+
+  let actualValue: number | null = null;
+  let valueLabel = "";
+
+  if (conditionType === "price") {
+    const upstream = Object.values(context).find(
+      (c: any) =>
+        c?.token?.toUpperCase() === token.toUpperCase() && c?.price != null,
+    ) as any;
+    actualValue = upstream?.price ?? (await fetchTokenPrice(token));
+    valueLabel = `${token} $${actualValue?.toLocaleString() ?? "unknown"}`;
+  } else if (conditionType === "gas") {
+    const gas = await fetchEthGasPrice();
+    actualValue = gas?.standard ?? null;
+    valueLabel = `gas ${actualValue ?? "unknown"} Gwei`;
+  }
+
+  if (actualValue === null) {
+    return {
+      nodeType: "condition",
+      label: (node.data?.label as string) || "Condition",
+      status: "error",
+      message: `Could not evaluate condition — failed to fetch ${conditionType}`,
+      conditionPassed: false,
+    };
+  }
+
+  let passed = false;
+  switch (operator) {
+    case "gt":
+      passed = actualValue > threshold;
+      break;
+    case "gte":
+      passed = actualValue >= threshold;
+      break;
+    case "lt":
+      passed = actualValue < threshold;
+      break;
+    case "lte":
+      passed = actualValue <= threshold;
+      break;
+    case "eq":
+      passed = Math.abs(actualValue - threshold) < 0.001;
+      break;
+    default:
+      passed = actualValue > threshold;
+  }
+
+  const opLabel: Record<string, string> = {
+    gt: ">",
+    gte: "≥",
+    lt: "<",
+    lte: "≤",
+    eq: "=",
+  };
+  const verdict = passed
+    ? "✅ PASSED — flow continues"
+    : "🛑 FAILED — flow stopped";
+  context[node.id] = {
+    passed,
+    actualValue,
+    threshold,
+    operator,
+    conditionType,
+  };
+
+  return {
+    nodeType: "condition",
+    label: (node.data?.label as string) || "Condition",
+    status: "success",
+    message: `${valueLabel} ${opLabel[operator] || operator} $${threshold} → ${verdict}`,
+    data: {
+      conditionType,
+      token,
+      actualValue,
+      operator: opLabel[operator],
+      threshold,
+      passed,
+      verdict,
+    },
+    conditionPassed: passed,
+  };
+}
+
+async function executeAlert(
+  node: Node,
+  context: FlowContext,
+): Promise<Omit<NodeResult, "nodeId" | "duration">> {
+  const alertType = (node.data?.alertType as string) || "info";
+  const message = (node.data?.message as string) || "Flow alert triggered";
+
+  const contextSummary: string[] = [];
+  for (const data of Object.values(context)) {
+    if ((data as any)?.price != null)
+      contextSummary.push(
+        `${(data as any).token}: $${(data as any).price.toLocaleString()}`,
+      );
+    if ((data as any)?.gwei != null)
+      contextSummary.push(`Gas: ${(data as any).gwei} Gwei`);
+    if ((data as any)?.passed != null)
+      contextSummary.push(
+        `Condition: ${(data as any).passed ? "PASSED" : "FAILED"}`,
+      );
+  }
+
+  const emoji: Record<string, string> = {
+    info: "ℹ️",
+    warning: "⚠️",
+    success: "✅",
+    error: "🚨",
+  };
+  const contextStr =
+    contextSummary.length > 0 ? ` | ${contextSummary.join(" | ")}` : "";
+
+  return {
+    nodeType: "alert",
+    label: (node.data?.label as string) || "Alert",
+    status: "success",
+    message: `${emoji[alertType] || "🔔"} ${message}${contextStr}`,
+    data: {
+      alertType,
+      message,
+      timestamp: new Date().toLocaleString(),
+      context: contextSummary,
+    },
+  };
+}
+
 async function executeGasOptimizer(
   node: Node,
+  context: FlowContext,
 ): Promise<Omit<NodeResult, "nodeId" | "duration">> {
   const gas = await fetchEthGasPrice();
   if (gas) {
-    const maxGwei = (node.data?.maxGwei as number) || 50;
+    const maxGwei = parseFloat(String(node.data?.maxGwei || "50"));
     const acceptable = gas.standard <= maxGwei;
+    context[node.id] = { ...gas };
     return {
       nodeType: node.type || "gasOptimizer",
       label: (node.data?.label as string) || "Gas Optimizer",
@@ -171,20 +309,17 @@ async function executeSwap(
   const fromToken = (node.data?.fromToken as string) || "ETH";
   const toToken = (node.data?.toToken as string) || "USDC";
   const amount = (node.data?.amount as number) || 0.1;
-
   const [fromPrice, toPrice] = await Promise.all([
     fetchTokenPrice(fromToken),
     fetchTokenPrice(toToken),
   ]);
-
   const usdValue = fromPrice ? fromPrice * amount : null;
   const estimatedOut = usdValue && toPrice ? usdValue / toPrice : null;
-
   return {
     nodeType: node.type || "swap",
     label: (node.data?.label as string) || "Swap",
     status: "success",
-    message: `Swap ${amount} ${fromToken}${usdValue ? ` ($${usdValue.toFixed(2)})` : ""} → ~${estimatedOut ? estimatedOut.toFixed(4) : "?"} ${toToken} via ${wallet.label}`,
+    message: `Swap ${amount} ${fromToken}${usdValue ? ` ($${usdValue.toFixed(2)})` : ""} → ~${estimatedOut ? estimatedOut.toFixed(4) : "?"} ${toToken}`,
     data: {
       fromToken,
       toToken,
@@ -194,8 +329,6 @@ async function executeSwap(
       usdValue,
       estimatedOut,
       wallet: wallet.address,
-      walletLabel: wallet.label,
-      note: "Requires wallet signature on client — simulated server-side",
     },
   };
 }
@@ -212,31 +345,20 @@ async function executeMultiWallet(
       message: "No wallets connected",
     };
   }
-
   const action = (node.data?.action as string) || "parallel-swap";
   const token = (node.data?.token as string) || "ETH";
   const price = await fetchTokenPrice(token);
-
-  const walletResults = allWallets.map((w) => ({
-    address: w.address,
-    label: w.label,
-    type: w.type,
-    status: "queued" as const,
-    note: `${action} — awaiting signature from ${w.label} (${w.address.slice(0, 6)}…${w.address.slice(-4)})`,
-  }));
-
   return {
     nodeType: node.type || "multiWallet",
     label: (node.data?.label as string) || "Multi-Wallet",
     status: "success",
-    message: `${action} queued across ${allWallets.length} wallet${allWallets.length > 1 ? "s" : ""}${price ? ` | ${token} = $${price.toLocaleString()}` : ""}`,
+    message: `${action} queued across ${allWallets.length} wallets${price ? ` | ${token} = $${price.toLocaleString()}` : ""}`,
     data: {
       walletCount: allWallets.length,
       action,
       token,
       price,
-      wallets: walletResults,
-      note: "Each wallet must sign independently in the browser extension",
+      wallets: allWallets.map((w) => ({ ...w, status: "queued" })),
     },
   };
 }
@@ -269,9 +391,9 @@ async function executeSocial(
   } catch (err: any) {
     return {
       nodeType: node.type || "social",
-      label: (node.data?.label as string) || node.type || "Social",
+      label: (node.data?.label as string) || "Social",
       status: "error",
-      message: err.message || "Social API error",
+      message: err.message,
     };
   }
 }
@@ -281,16 +403,16 @@ async function executeGenericNode(
   wallet: ConnectedWallet,
 ): Promise<Omit<NodeResult, "nodeId" | "duration">> {
   const typeMessages: Record<string, string> = {
-    bridge: `Bridge transaction prepared for ${wallet.label}`,
-    liquidity: `Liquidity position managed via ${wallet.label}`,
-    limit: `Limit order set via ${wallet.label}`,
-    schedule: "Scheduled trigger evaluated",
-    condition: "Condition logic evaluated",
-    notification: "Notification dispatched",
-    yield: `Yield strategy executed via ${wallet.label}`,
-    portfolio: `Portfolio rebalanced via ${wallet.label}`,
+    bridge: "Bridge transaction prepared",
+    trigger: "Trigger evaluated",
+    waitDelay: `Waited ${node.data?.seconds || 3}s`,
+    loop: "Loop iteration complete",
+    chainSwitch: "Chain switch prepared",
+    walletConnect: "Wallet connection verified",
+    claimAirdrop: "Airdrop claim prepared",
+    volumeFarmer: "Volume farming round complete",
+    lendStake: "Lend/Stake position managed",
   };
-
   return {
     nodeType: node.type || "unknown",
     label: (node.data?.label as string) || node.type || "Node",
@@ -315,7 +437,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build active wallet object
     const activeWallet: ConnectedWallet = {
       address: walletAddress,
       type: walletType,
@@ -323,32 +444,52 @@ export async function POST(request: NextRequest) {
         allWallets.find((w) => w.address === walletAddress)?.label ||
         walletType,
     };
-
-    // Ensure the active wallet is in allWallets list
-    const effectiveWallets: ConnectedWallet[] =
+    const effectiveWallets =
       allWallets.length > 0 ? allWallets : [activeWallet];
 
     const startedAt = new Date().toISOString();
     const executionId = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const results: NodeResult[] = [];
+    const context: FlowContext = {};
 
-    // Topological order: nodes with no incoming edges first
     const incomingEdges = new Set(edges.map((e) => e.target));
     const ordered = [
       ...nodes.filter((n) => !incomingEdges.has(n.id)),
       ...nodes.filter((n) => incomingEdges.has(n.id)),
     ];
 
+    let flowHalted = false;
+    let haltReason = "";
+
     for (const node of ordered) {
+      if (flowHalted) {
+        results.push({
+          nodeId: node.id,
+          nodeType: node.type || "unknown",
+          label: (node.data?.label as string) || node.type || "Node",
+          status: "skipped",
+          message: `Skipped — ${haltReason}`,
+          duration: 0,
+        });
+        continue;
+      }
+
       const nodeStart = Date.now();
       let result: Omit<NodeResult, "nodeId" | "duration">;
-
       const type = node.type || "";
 
       if (type === "priceCheck") {
-        result = await executePriceCheck(node);
+        result = await executePriceCheck(node, context);
+      } else if (type === "condition") {
+        result = await executeCondition(node, context);
+        if (result.conditionPassed === false) {
+          flowHalted = true;
+          haltReason = `condition not met at "${result.label}"`;
+        }
+      } else if (type === "alert") {
+        result = await executeAlert(node, context);
       } else if (type === "gasOptimizer") {
-        result = await executeGasOptimizer(node);
+        result = await executeGasOptimizer(node, context);
       } else if (type === "swap") {
         result = await executeSwap(node, activeWallet);
       } else if (type === "multiWallet") {
@@ -384,17 +525,12 @@ export async function POST(request: NextRequest) {
     };
 
     executions.set(executionId, record);
+    if (executions.size > 50) executions.delete([...executions.keys()][0]);
 
-    // Keep only last 50
-    if (executions.size > 50) {
-      const oldest = [...executions.keys()][0];
-      executions.delete(oldest);
-    }
-
-    // Add success boolean to each result so RunFlowDialog can use r.success
     const normalizedResults = results.map((r) => ({
       ...r,
       success: r.status === "success",
+      output: r.data,
     }));
 
     return NextResponse.json({
@@ -402,9 +538,12 @@ export async function POST(request: NextRequest) {
       status: errorCount === 0 ? "completed" : "failed",
       executionId,
       results: normalizedResults,
+      flowHalted,
+      haltReason: flowHalted ? haltReason : null,
       summary: {
         total: results.length,
         success: successCount,
+        skipped: results.filter((r) => r.status === "skipped").length,
         errors: errorCount,
         wallets: effectiveWallets.length,
         duration:
