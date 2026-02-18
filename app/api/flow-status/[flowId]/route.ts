@@ -3,9 +3,10 @@ import { executions } from "../../execute/route";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { flowId: string } },
+  { params }: { params: Promise<{ flowId: string }> },
 ) {
-  const execution = executions.get(params.flowId);
+  const { flowId } = await params;
+  const execution = executions.get(flowId);
 
   if (!execution) {
     return NextResponse.json({ error: "Flow not found" }, { status: 404 });
