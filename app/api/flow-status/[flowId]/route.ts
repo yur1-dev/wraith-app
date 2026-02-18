@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/**
- * Returns status for a specific flow execution by ID.
- * Fetches from the execute route's GET endpoint rather than
- * importing the executions map directly (avoids TS2459 error).
- */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { flowId: string } },
+  { params }: { params: Promise<{ flowId: string }> },
 ) {
-  const { flowId } = params;
+  const { flowId } = await params;
 
   if (!flowId) {
     return NextResponse.json({ error: "flowId is required" }, { status: 400 });

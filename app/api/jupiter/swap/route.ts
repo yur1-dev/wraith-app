@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import axios from "axios";
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
+export async function POST(request: NextRequest) {
+  const body = await request.json();
 
-    const response = await axios.post(
-      "https://quote-api.jup.ag/v6/swap",
-      body,
-      { headers: { "Content-Type": "application/json" } },
-    );
-
-    return NextResponse.json(response.data);
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: error.response?.status ?? 500 },
-    );
-  }
+  const res = await fetch("https://api.jup.ag/swap/v1/swap", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.JUPITER_API_KEY || "",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return NextResponse.json(data);
 }
