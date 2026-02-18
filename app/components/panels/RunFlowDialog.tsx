@@ -17,8 +17,9 @@ import {
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
 import { FeeConfirmStep } from "@/app/components/panels/FeeConfirmStep";
-import { getFeeDisplay } from "@/lib/fee/feeCollector";
 import { useWallet } from "@/lib/hooks/useWallet";
+import { Connection, VersionedTransaction, PublicKey } from "@solana/web3.js";
+import type { Node } from "@xyflow/react";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -32,15 +33,8 @@ interface NodeResult {
   output?: Record<string, unknown>;
   error?: string;
   signature?: string;
+  explorerUrl?: string;
   duration?: number;
-}
-
-interface ApiNodeResult {
-  nodeId: string;
-  success: boolean;
-  output?: Record<string, unknown>;
-  error?: string;
-  signature?: string;
 }
 
 interface RunFlowDialogProps {
@@ -48,7 +42,16 @@ interface RunFlowDialogProps {
   onClose: () => void;
 }
 
-// ── Node type metadata ─────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────
+
+const TOKEN_ADDRESSES: Record<string, string> = {
+  SOL: "So11111111111111111111111111111111111111112",
+  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  BONK: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+  JUP: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+  RAY: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+};
 
 const NODE_META: Record<
   string,
@@ -74,13 +77,129 @@ const NODE_META: Record<
   gasOptimizer: { label: "Gas Optimizer", emoji: "⛽", color: "#84cc16" },
 };
 
+// ── Jupiter swap (real, client-side via Phantom) ───────────────────
+
+async function executeJupiterSwap(
+  node: Node,
+  walletAddress: string,
+  proxyBase: string,
+): Promise<{
+  success: boolean;
+  signature?: string;
+  explorerUrl?: string;
+  error?: string;
+  output?: Record<string, unknown>;
+}> {
+  const { fromToken, toToken, amount, slippage } = node.data as {
+    fromToken?: string;
+    toToken?: string;
+    amount?: string | number;
+    slippage?: string | number;
+  };
+
+  const inputMint =
+    TOKEN_ADDRESSES[(fromToken || "SOL").toUpperCase()] ||
+    fromToken ||
+    TOKEN_ADDRESSES.SOL;
+  const outputMint =
+    TOKEN_ADDRESSES[(toToken || "USDC").toUpperCase()] ||
+    toToken ||
+    TOKEN_ADDRESSES.USDC;
+  const decimals = (fromToken || "SOL").toUpperCase() === "USDC" ? 6 : 9;
+  const amountLamports = Math.floor(
+    parseFloat(String(amount || "0.01")) * Math.pow(10, decimals),
+  );
+  const slippageBps = Math.floor(parseFloat(String(slippage || "1")) * 100);
+
+  // 1. Get quote via proxy
+  const quoteParams = new URLSearchParams({
+    inputMint,
+    outputMint,
+    amount: String(amountLamports),
+    slippageBps: String(slippageBps),
+  });
+
+  const quoteRes = await fetch(`${proxyBase}/api/jupiter/quote?${quoteParams}`);
+  if (!quoteRes.ok) throw new Error(`Quote failed: ${await quoteRes.text()}`);
+  const quote = await quoteRes.json();
+
+  if (quote.error) throw new Error(`Jupiter quote error: ${quote.error}`);
+
+  // 2. Get swap transaction via proxy
+  const swapRes = await fetch(`${proxyBase}/api/jupiter/swap`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      quoteResponse: quote,
+      userPublicKey: walletAddress,
+      wrapAndUnwrapSol: true,
+    }),
+  });
+  if (!swapRes.ok) throw new Error(`Swap tx failed: ${await swapRes.text()}`);
+  const swapData = await swapRes.json();
+
+  if (swapData.error) throw new Error(`Jupiter swap error: ${swapData.error}`);
+
+  // 3. Deserialize transaction
+  const swapTransactionBuf = Buffer.from(swapData.swapTransaction, "base64");
+  const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+
+  // 4. Sign with Phantom
+  const phantom = (window as any).solana;
+  if (!phantom?.isPhantom) throw new Error("Phantom wallet not found");
+
+  const { signature: signedTx } =
+    await phantom.signAndSendTransaction(transaction);
+
+  // 5. Confirm on-chain
+  const connection = new Connection(
+    "https://api.mainnet-beta.solana.com",
+    "confirmed",
+  );
+  const confirmation = await connection.confirmTransaction(
+    signedTx,
+    "confirmed",
+  );
+
+  if (confirmation.value.err) {
+    throw new Error(
+      `Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
+    );
+  }
+
+  const explorerUrl = `https://solscan.io/tx/${signedTx}`;
+
+  return {
+    success: true,
+    signature: signedTx,
+    explorerUrl,
+    output: {
+      fromToken: fromToken || "SOL",
+      toToken: toToken || "USDC",
+      amount,
+      amountOut: (parseInt(quote.outAmount) / Math.pow(10, 6)).toFixed(4),
+      dex: "Jupiter",
+      explorerUrl,
+    },
+  };
+}
+
+// ── Wait/Delay executor ────────────────────────────────────────────
+
+async function executeWaitDelay(
+  node: Node,
+): Promise<{ success: boolean; output?: Record<string, unknown> }> {
+  const seconds = parseInt(
+    String(node.data?.seconds || node.data?.delay || "3"),
+  );
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+  return { success: true, output: { waited: `${seconds}s` } };
+}
+
 // ── Main Component ─────────────────────────────────────────────────
 
 export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
   const { nodes, edges } = useFlowStore();
-
-  // ── Multi-wallet: pull walletAddress/walletType as getter functions,
-  //    and grab the full wallets array for passing to the execute API
   const walletAddress = useWallet((s) => s.walletAddress());
   const walletType = useWallet((s) => s.walletType());
   const wallets = useWallet((s) => s.wallets);
@@ -92,7 +211,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
   const [nodeResults, setNodeResults] = useState<NodeResult[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [feeSignature, setFeeSignature] = useState<string | null>(null);
-  const [flowId, setFlowId] = useState<string | null>(null);
   const [overallStatus, setOverallStatus] = useState<
     "completed" | "failed" | null
   >(null);
@@ -101,20 +219,19 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
   const startTimeRef = useRef<number>(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // Reset when opened
+  const proxyBase = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
   useEffect(() => {
     if (open) {
       setPhase("ready");
       setNodeResults([]);
       setExpandedNodes(new Set());
-      setFlowId(null);
       setOverallStatus(null);
       setFeeSignature(null);
       setElapsedMs(0);
     }
   }, [open]);
 
-  // Timer
   useEffect(() => {
     if (phase === "running") {
       startTimeRef.current = Date.now();
@@ -129,15 +246,12 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
     };
   }, [phase]);
 
-  // Auto scroll logs
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [nodeResults]);
 
-  const formatMs = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  };
+  const formatMs = (ms: number) =>
+    ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 
   const handleRun = async () => {
     if (!isConnected || !walletAddress) return;
@@ -154,11 +268,23 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
     startExecution();
   };
 
+  const setNodeStatus = (nodeId: string, update: Partial<NodeResult>) => {
+    setNodeResults((prev) =>
+      prev.map((n) => (n.nodeId === nodeId ? { ...n, ...update } : n)),
+    );
+  };
+
   const startExecution = async () => {
     setPhase("running");
 
-    // Init all nodes as pending
-    const initialResults: NodeResult[] = nodes.map((node) => ({
+    // Topological order
+    const incomingEdges = new Set(edges.map((e) => e.target));
+    const ordered = [
+      ...nodes.filter((n) => !incomingEdges.has(n.id)),
+      ...nodes.filter((n) => incomingEdges.has(n.id)),
+    ];
+
+    const initialResults: NodeResult[] = ordered.map((node) => ({
       nodeId: node.id,
       nodeType: node.type || "unknown",
       nodeLabel:
@@ -170,102 +296,91 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
     }));
     setNodeResults(initialResults);
 
-    try {
-      const res = await fetch("/api/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nodes,
-          edges,
-          walletAddress,
-          walletType,
-          // Pass all connected wallets so multi-wallet nodes use every wallet
-          allWallets: wallets.map((w) => ({
-            address: w.address,
-            type: w.type,
-            label: w.label,
-          })),
-        }),
-      });
+    let failed = false;
 
-      const data = await res.json();
-
-      if (data.error) {
-        setNodeResults((prev) =>
-          prev.map((r) => ({
-            ...r,
-            status: "failed" as NodeStatus,
-            error: data.error,
-          })),
-        );
-        setOverallStatus("failed");
-        setPhase("done");
-        return;
+    for (const node of ordered) {
+      if (failed) {
+        setNodeStatus(node.id, { status: "skipped" });
+        continue;
       }
 
-      setFlowId(data.flowId);
+      const nodeStart = Date.now();
+      setNodeStatus(node.id, { status: "running" });
 
-      const results: ApiNodeResult[] = data.results;
+      try {
+        let result: {
+          success: boolean;
+          signature?: string;
+          explorerUrl?: string;
+          error?: string;
+          output?: Record<string, unknown>;
+        };
 
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i];
-
-        // Mark current as running
-        setNodeResults((prev) =>
-          prev.map((n) =>
-            n.nodeId === r.nodeId ? { ...n, status: "running" } : n,
-          ),
-        );
-
-        await new Promise((resolve) => setTimeout(resolve, 400));
-
-        setNodeResults((prev) =>
-          prev.map((n) =>
-            n.nodeId === r.nodeId
-              ? {
-                  ...n,
-                  status: r.success ? "success" : "failed",
-                  output: r.output,
-                  error: r.error,
-                  signature: r.signature,
-                  duration: Math.floor(Math.random() * 800) + 200,
-                }
-              : n,
-          ),
-        );
-
-        if (!r.success) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          setNodeResults((prev) =>
-            prev.map((n) =>
-              n.status === "pending" ? { ...n, status: "skipped" } : n,
-            ),
-          );
-          break;
+        if (node.type === "swap" && walletType === "phantom") {
+          // ✅ Real Jupiter swap via Phantom
+          result = await executeJupiterSwap(node, walletAddress!, proxyBase);
+        } else if (node.type === "waitDelay") {
+          result = await executeWaitDelay(node);
+        } else {
+          // For all other nodes: call the API route (price checks, social, etc.)
+          const res = await fetch("/api/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              nodes: [node],
+              edges: [],
+              walletAddress,
+              walletType,
+              allWallets: wallets.map((w) => ({
+                address: w.address,
+                type: w.type,
+                label: w.label,
+              })),
+            }),
+          });
+          const data = await res.json();
+          const r = data.results?.[0];
+          result = {
+            success: r?.success ?? false,
+            error: r?.error,
+            output: r?.output,
+            signature: r?.signature,
+          };
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        const duration = Date.now() - nodeStart;
+
+        if (result.success) {
+          setNodeStatus(node.id, {
+            status: "success",
+            duration,
+            output: result.output,
+            signature: result.signature,
+            explorerUrl: result.explorerUrl,
+          });
+        } else {
+          setNodeStatus(node.id, {
+            status: "failed",
+            duration,
+            error: result.error || "Unknown error",
+          });
+          failed = true;
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        setNodeStatus(node.id, {
+          status: "failed",
+          duration: Date.now() - nodeStart,
+          error: message,
+        });
+        failed = true;
       }
 
-      setOverallStatus(data.status ?? (data.success ? "completed" : "failed"));
-      setPhase("done");
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setNodeResults((prev) =>
-        prev.map((r) => ({
-          ...r,
-          status:
-            r.status === "pending"
-              ? "skipped"
-              : r.status === "running"
-                ? "failed"
-                : r.status,
-          error: r.status === "running" ? message : r.error,
-        })),
-      );
-      setOverallStatus("failed");
-      setPhase("done");
+      await new Promise((resolve) => setTimeout(resolve, 150));
     }
+
+    setOverallStatus(failed ? "failed" : "completed");
+    setPhase("done");
   };
 
   const toggleExpand = (nodeId: string) => {
@@ -281,10 +396,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
   const truncAddr = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : "";
-
-  // Show wallet count badge when multiple wallets connected
-  const walletCountLabel =
-    wallets.length > 1 ? ` · ${wallets.length} wallets` : "";
 
   if (!open) return null;
 
@@ -372,7 +483,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
               )}
             </div>
           </div>
-
           <button
             onClick={onClose}
             disabled={phase === "running"}
@@ -389,7 +499,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
           </button>
         </div>
 
-        {/* Wallet + flow info */}
+        {/* Wallet info */}
         <div
           className="px-5 py-3 shrink-0 flex items-center justify-between"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
@@ -414,7 +524,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
             <span className="text-[11px] font-mono text-slate-400">
               {truncAddr}
             </span>
-            {/* Multi-wallet badge */}
             {wallets.length > 1 && (
               <span
                 className="text-[9px] px-1.5 py-0.5 rounded-full font-bold"
@@ -436,14 +545,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
             <span>{nodes.length} nodes</span>
             <span>·</span>
             <span>{edges.length} connections</span>
-            {wallets.length > 1 && (
-              <>
-                <span>·</span>
-                <span style={{ color: "#22d3ee" }}>
-                  {wallets.length} wallets
-                </span>
-              </>
-            )}
           </div>
         </div>
 
@@ -460,31 +561,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
         {/* READY STATE */}
         {phase === "ready" && (
           <div className="flex-1 overflow-y-auto px-5 py-4">
-            {/* Multi-wallet info banner */}
-            {wallets.length > 1 && (
-              <div
-                className="flex items-start gap-2 p-3 rounded-lg mb-4 text-xs"
-                style={{
-                  background: "rgba(34,211,238,0.05)",
-                  border: "1px solid rgba(34,211,238,0.15)",
-                }}
-              >
-                <span className="text-cyan-400 font-medium shrink-0">👥</span>
-                <div>
-                  <span className="text-cyan-400 font-medium">
-                    {wallets.length} wallets connected
-                  </span>
-                  <span className="text-slate-500">
-                    {" "}
-                    — Multi-Wallet nodes will execute across all of them:{" "}
-                  </span>
-                  <span className="text-slate-400">
-                    {wallets.map((w) => w.label).join(", ")}
-                  </span>
-                </div>
-              </div>
-            )}
-
             <p className="text-xs text-slate-400 mb-4">
               The following nodes will be executed in order:
             </p>
@@ -564,7 +640,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                             : "1px solid rgba(255,255,255,0.04)",
                   }}
                 >
-                  {/* Node row */}
                   <div
                     className="flex items-center gap-3 p-3"
                     onClick={() => hasDetails && toggleExpand(result.nodeId)}
@@ -601,7 +676,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                         />
                       )}
                     </div>
-
                     <span className="text-[10px] text-slate-600 font-mono w-4 shrink-0">
                       {i + 1}
                     </span>
@@ -623,13 +697,11 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                     >
                       {result.nodeLabel}
                     </span>
-
                     {result.duration && (
                       <span className="text-[10px] font-mono text-slate-600 shrink-0">
                         {formatMs(result.duration)}
                       </span>
                     )}
-
                     {hasDetails && (
                       <div style={{ color: "rgba(148,163,184,0.4)" }}>
                         {isExpanded ? (
@@ -641,7 +713,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                     )}
                   </div>
 
-                  {/* Expanded details */}
                   {isExpanded && hasDetails && (
                     <div
                       className="px-3 pb-3"
@@ -659,9 +730,13 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                           ❌ {result.error}
                         </div>
                       )}
-
-                      {result.signature && (
-                        <div className="mt-2 flex items-center gap-2">
+                      {result.explorerUrl && (
+                        <a
+                          href={result.explorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 flex items-center gap-2 hover:opacity-80 transition-opacity"
+                        >
                           <span className="text-[10px] text-slate-500 font-mono">
                             tx:
                           </span>
@@ -673,9 +748,8 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                             className="shrink-0"
                             style={{ color: "#22d3ee" }}
                           />
-                        </div>
+                        </a>
                       )}
-
                       {result.output && (
                         <div
                           className="mt-2 p-2 rounded-lg text-[10px] font-mono"
@@ -687,13 +761,13 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                           }}
                         >
                           {Object.entries(result.output)
-                            .filter(([k]) => k !== "walletAddress")
+                            .filter(([k]) => k !== "explorerUrl")
                             .map(([k, v]) => (
                               <div key={k} className="flex gap-2">
                                 <span style={{ color: "#818cf8" }}>{k}:</span>
                                 <span>
                                   {typeof v === "object"
-                                    ? JSON.stringify(v, null, 2)
+                                    ? JSON.stringify(v)
                                     : String(v)}
                                 </span>
                               </div>
@@ -719,13 +793,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
-                  width: `${
-                    (nodeResults.filter(
-                      (r) => r.status === "success" || r.status === "failed",
-                    ).length /
-                      Math.max(totalCount, 1)) *
-                    100
-                  }%`,
+                  width: `${(nodeResults.filter((r) => r.status === "success" || r.status === "failed").length / Math.max(totalCount, 1)) * 100}%`,
                   background: "linear-gradient(90deg, #22d3ee, #818cf8)",
                   boxShadow: "0 0 8px rgba(34,211,238,0.5)",
                 }}
@@ -753,19 +821,8 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                 boxShadow: "0 0 20px rgba(34,211,238,0.2)",
               }}
             >
-              <Play className="ml-2" size={15} />
+              <Play size={15} />
               Execute Flow
-              {wallets.length > 1 && (
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded-full ml-1"
-                  style={{
-                    background: "rgba(255,255,255,0.15)",
-                    color: "white",
-                  }}
-                >
-                  {wallets.length} wallets
-                </span>
-              )}
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded-full ml-auto mr-2"
                 style={{
@@ -800,7 +857,6 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                 onClick={() => {
                   setPhase("fee");
                   setNodeResults([]);
-                  setFlowId(null);
                   setOverallStatus(null);
                   setElapsedMs(0);
                   setFeeSignature(null);
