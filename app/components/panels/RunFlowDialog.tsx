@@ -821,7 +821,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                 boxShadow: "0 0 20px rgba(34,211,238,0.2)",
               }}
             >
-              <Play size={15} />
+              <Play className="ml-2" size={15} />
               Execute Flow
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded-full ml-auto mr-2"
