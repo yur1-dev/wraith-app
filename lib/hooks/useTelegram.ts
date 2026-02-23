@@ -4,7 +4,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useWallet } from "@/lib/hooks/useWallet";
 
-// Kept outside the store so it doesn't pollute persisted state
 let _pollInterval: ReturnType<typeof setInterval> | null = null;
 
 function stopPolling() {
@@ -44,7 +43,7 @@ export const useTelegram = create<TelegramStore>()(
             const data = await res.json();
             if (data.chatId) {
               set({ chatId: data.chatId, isConnected: true });
-              stopPolling(); // already connected — stop
+              stopPolling();
             }
           }
         } catch {
@@ -56,24 +55,48 @@ export const useTelegram = create<TelegramStore>()(
 
       openBot: async () => {
         const wallet = useWallet.getState().walletAddress();
-        if (!wallet) return;
-
-        try {
-          const res = await fetch("/api/telegram/connect", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ wallet }),
-          });
-          const data = await res.json();
-          if (data.botUrl) {
-            window.open(data.botUrl, "_blank");
-          }
-        } catch {
-          window.open("https://t.me/wraithopxzbot", "_blank");
+        if (!wallet) {
+          console.warn("[Telegram] No wallet connected");
+          return;
         }
 
-        // After opening the bot, poll every 3s (up to 2 min = 40 attempts)
-        // until the user hits /start and the backend links their chatId
+        // Use XMLHttpRequest — browser extensions interfere with fetch
+        // but XHR responses are more reliably readable
+        const botUrl = await new Promise<string>((resolve) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/telegram/connect");
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.timeout = 8000;
+          xhr.onload = () => {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              console.log("[Telegram] connect response:", data);
+              if (data.botUrl && !data.botUrl.includes("undefined")) {
+                resolve(data.botUrl);
+              } else {
+                console.warn("[Telegram] botUrl missing or undefined:", data);
+                resolve("https://t.me/wraithopxzbot");
+              }
+            } catch (e) {
+              console.error("[Telegram] parse error:", e, xhr.responseText);
+              resolve("https://t.me/wraithopxzbot");
+            }
+          };
+          xhr.onerror = () => {
+            console.error("[Telegram] XHR error");
+            resolve("https://t.me/wraithopxzbot");
+          };
+          xhr.ontimeout = () => {
+            console.error("[Telegram] XHR timeout");
+            resolve("https://t.me/wraithopxzbot");
+          };
+          xhr.send(JSON.stringify({ wallet }));
+        });
+
+        console.log("[Telegram] opening:", botUrl);
+        window.open(botUrl, "_blank");
+
+        // Poll every 3s for up to 2 minutes until connected
         stopPolling();
         let attempts = 0;
         _pollInterval = setInterval(async () => {
