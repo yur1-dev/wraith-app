@@ -59,12 +59,9 @@ const PRESET_COLORS = [
   "#84cc16",
 ];
 
-// Replace with your actual bot username
-const TELEGRAM_BOT_USERNAME = "wraithopxzbot";
-
 export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
-  const { isConnected: tgConnected, checkConnection } = useTelegram();
+  const { isConnected: tgConnected, openBot } = useTelegram();
 
   const alertType = (data.alertType as AlertChannel) ?? "Telegram";
   const severity = (data.severity as Severity) ?? "info";
@@ -104,14 +101,6 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
 
   const update = (patch: Record<string, unknown>) => updateNodeData(id, patch);
 
-  const handleOpenBot = () => {
-    window.open(`https://t.me/${TELEGRAM_BOT_USERNAME}`, "_blank");
-    // Poll for connection after user opens bot
-    const interval = setInterval(() => checkConnection(), 3000);
-    setTimeout(() => clearInterval(interval), 60000);
-  };
-
-  // Whether this node is "ready" — Telegram needs connection, others just need a message
   const isReady = alertType === "Telegram" ? tgConnected : message.length > 0;
 
   return (
@@ -397,7 +386,7 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
 
       {/* ── Body ── */}
       <div className="px-3 py-2.5 rounded-b-2xl select-none">
-        {/* Telegram connection banner — only when Telegram selected */}
+        {/* Telegram connection banner */}
         {alertType === "Telegram" && (
           <div
             className="mb-2 rounded-lg px-2.5 py-2 flex items-center justify-between gap-2"
@@ -425,7 +414,7 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
             </div>
             {!tgConnected && (
               <button
-                onClick={handleOpenBot}
+                onClick={openBot}
                 className="flex items-center gap-1 text-[8px] font-mono font-bold uppercase tracking-widest
                   text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
               >
