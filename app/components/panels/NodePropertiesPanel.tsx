@@ -9,21 +9,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, Trash2, ChevronRight } from "lucide-react";
+import {
+  X,
+  Trash2,
+  ChevronRight,
+  ExternalLink,
+  CheckCircle2,
+} from "lucide-react";
+import { useTelegram } from "@/lib/hooks/useTelegram";
 
-// Helper to safely cast node data fields to string
 const str = (val: unknown, fallback = ""): string =>
   typeof val === "string" ? val : fallback;
 
-// Helper to safely cast node data fields to boolean
 const bool = (val: unknown, fallback = false): boolean =>
   typeof val === "boolean" ? val : fallback;
 
-// Helper to safely cast wallets array
 const walletList = (val: unknown): string[] =>
   Array.isArray(val) ? (val as string[]) : [];
 
-// Node type → accent color
 const NODE_COLORS: Record<string, string> = {
   trigger: "#a855f7",
   multiWallet: "#f97316",
@@ -65,6 +68,15 @@ const NODE_LABELS: Record<string, string> = {
   priceCheck: "PRICE CHECK",
   gasOptimizer: "GAS OPTIMIZER",
 };
+
+const SEVERITY_COLORS: Record<string, string> = {
+  info: "#38bdf8",
+  success: "#34d399",
+  warning: "#fbbf24",
+  urgent: "#f87171",
+};
+
+const TELEGRAM_BOT_USERNAME = "wraithopxzbot"; // replace with your bot
 
 function FieldGroup({ children }: { children: React.ReactNode }) {
   return <div className="space-y-1.5">{children}</div>;
@@ -192,7 +204,6 @@ const CHAIN_OPTIONS = (
 );
 
 export function NodePropertiesPanel() {
-  // ✅ KEY FIX: Derive live selectedNode from nodes array — never stale
   const selectedNode = useFlowStore((s) =>
     s.selectedNodeId
       ? (s.nodes.find((n) => n.id === s.selectedNodeId) ?? null)
@@ -201,6 +212,7 @@ export function NodePropertiesPanel() {
   const setSelectedNode = useFlowStore((s) => s.setSelectedNode);
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
   const deleteNode = useFlowStore((s) => s.deleteNode);
+  const { isConnected: tgConnected, checkConnection } = useTelegram();
 
   if (!selectedNode) return null;
 
@@ -217,8 +229,13 @@ export function NodePropertiesPanel() {
     deleteNode(selectedNode.id);
     setSelectedNode(null);
   };
-  const updateField = (field: string, value: unknown) => {
+  const updateField = (field: string, value: unknown) =>
     updateNodeData(selectedNode.id, { [field]: value });
+
+  const handleOpenBot = () => {
+    window.open(`https://t.me/${TELEGRAM_BOT_USERNAME}`, "_blank");
+    const interval = setInterval(() => checkConnection(), 3000);
+    setTimeout(() => clearInterval(interval), 60000);
   };
 
   const renderFields = () => {
@@ -408,54 +425,152 @@ export function NodePropertiesPanel() {
 
       case "chainSwitch":
         return (
-          <>
-            <FieldGroup>
-              <FieldLabel>Target Chain</FieldLabel>
-              <StyledSelect
-                value={str(selectedNode.data.targetChain, "ethereum")}
-                onValueChange={(v) => updateField("targetChain", v)}
-              >
-                {CHAIN_OPTIONS}
-              </StyledSelect>
-            </FieldGroup>
-          </>
+          <FieldGroup>
+            <FieldLabel>Target Chain</FieldLabel>
+            <StyledSelect
+              value={str(selectedNode.data.targetChain, "ethereum")}
+              onValueChange={(v) => updateField("targetChain", v)}
+            >
+              {CHAIN_OPTIONS}
+            </StyledSelect>
+          </FieldGroup>
         );
 
+      // ✅ FIXED: No chat ID. Severity buttons. Telegram connect flow. Channel-specific fields.
       case "alert":
         return (
           <>
+            {/* Severity */}
             <FieldGroup>
-              <FieldLabel>Alert Type</FieldLabel>
+              <FieldLabel>Severity</FieldLabel>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["info", "success", "warning", "urgent"] as const).map(
+                  (s) => {
+                    const active =
+                      str(selectedNode.data.severity, "info") === s;
+                    const color = SEVERITY_COLORS[s];
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => updateField("severity", s)}
+                        className="h-7 rounded-md border text-[9px] font-mono font-bold uppercase tracking-widest transition-all cursor-pointer"
+                        style={
+                          active
+                            ? {
+                                color,
+                                borderColor: `${color}66`,
+                                background: `${color}18`,
+                              }
+                            : {
+                                color: "rgba(148,163,184,0.4)",
+                                borderColor: "rgba(51,65,85,0.8)",
+                                background: "transparent",
+                              }
+                        }
+                      >
+                        {s}
+                      </button>
+                    );
+                  },
+                )}
+              </div>
+            </FieldGroup>
+
+            {/* Channel */}
+            <FieldGroup>
+              <FieldLabel>Channel</FieldLabel>
               <StyledSelect
-                value={str(selectedNode.data.alertType, "telegram")}
+                value={str(selectedNode.data.alertType, "Telegram")}
                 onValueChange={(v) => updateField("alertType", v)}
               >
-                <SelectItem value="telegram">Telegram</SelectItem>
-                <SelectItem value="discord">Discord</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="webhook">Webhook</SelectItem>
+                <SelectItem value="Telegram">Telegram</SelectItem>
+                <SelectItem value="Discord">Discord</SelectItem>
+                <SelectItem value="Email">Email</SelectItem>
+                <SelectItem value="Webhook">Webhook</SelectItem>
               </StyledSelect>
             </FieldGroup>
-            <FieldGroup>
-              <FieldLabel>Message</FieldLabel>
-              <StyledTextarea
-                rows={3}
-                placeholder="Flow completed successfully!"
-                value={str(selectedNode.data.message)}
-                onChange={(e) => updateField("message", e.target.value)}
-              />
-            </FieldGroup>
-            {selectedNode.data.alertType === "telegram" && (
+
+            {/* Telegram — connect flow instead of chat ID */}
+            {selectedNode.data.alertType === "Telegram" && (
+              <div
+                className="rounded-lg p-3 space-y-2"
+                style={{
+                  background: tgConnected
+                    ? "rgba(34,197,94,0.06)"
+                    : "rgba(34,158,217,0.06)",
+                  border: `1px solid ${tgConnected ? "rgba(34,197,94,0.2)" : "rgba(34,158,217,0.2)"}`,
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    {tgConnected ? (
+                      <CheckCircle2 className="w-3 h-3 text-green-400" />
+                    ) : (
+                      <div className="w-2 h-2 rounded-full bg-cyan-500/60" />
+                    )}
+                    <span
+                      className={`text-[10px] font-mono font-bold ${tgConnected ? "text-green-400" : "text-cyan-400"}`}
+                    >
+                      {tgConnected ? "Bot connected" : "Bot not connected"}
+                    </span>
+                  </div>
+                  {!tgConnected && (
+                    <button
+                      onClick={handleOpenBot}
+                      className="flex items-center gap-1 text-[8px] font-mono font-bold uppercase tracking-widest
+                        px-2 py-1 rounded border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10
+                        transition-all cursor-pointer"
+                    >
+                      Open bot <ExternalLink className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[9px] font-mono text-slate-500 leading-relaxed">
+                  {tgConnected
+                    ? "Alerts will be sent to your Telegram private chat."
+                    : `Open @${TELEGRAM_BOT_USERNAME} in Telegram and hit Start. Alerts will go directly to you — no config needed.`}
+                </p>
+              </div>
+            )}
+
+            {/* Discord */}
+            {selectedNode.data.alertType === "Discord" && (
               <FieldGroup>
-                <FieldLabel>Chat ID</FieldLabel>
+                <FieldLabel>Webhook URL</FieldLabel>
                 <StyledInput
-                  placeholder="-100123456789"
-                  value={str(selectedNode.data.chatId)}
-                  onChange={(e) => updateField("chatId", e.target.value)}
+                  placeholder="https://discord.com/api/webhooks/..."
+                  value={str(selectedNode.data.webhookUrl)}
+                  onChange={(e) => updateField("webhookUrl", e.target.value)}
                 />
               </FieldGroup>
             )}
-            {selectedNode.data.alertType === "webhook" && (
+
+            {/* Email */}
+            {selectedNode.data.alertType === "Email" && (
+              <>
+                <FieldGroup>
+                  <FieldLabel>To Address</FieldLabel>
+                  <StyledInput
+                    placeholder="you@example.com"
+                    value={str(selectedNode.data.emailTo)}
+                    onChange={(e) => updateField("emailTo", e.target.value)}
+                  />
+                </FieldGroup>
+                <FieldGroup>
+                  <FieldLabel>Subject</FieldLabel>
+                  <StyledInput
+                    placeholder="Flow Alert"
+                    value={str(selectedNode.data.emailSubject)}
+                    onChange={(e) =>
+                      updateField("emailSubject", e.target.value)
+                    }
+                  />
+                </FieldGroup>
+              </>
+            )}
+
+            {/* Webhook */}
+            {selectedNode.data.alertType === "Webhook" && (
               <FieldGroup>
                 <FieldLabel>Webhook URL</FieldLabel>
                 <StyledInput
@@ -465,6 +580,31 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
+
+            {/* Message */}
+            <FieldGroup>
+              <FieldLabel>Message</FieldLabel>
+              <StyledTextarea
+                rows={3}
+                placeholder="Flow completed successfully!"
+                value={str(selectedNode.data.message)}
+                onChange={(e) => updateField("message", e.target.value)}
+              />
+            </FieldGroup>
+
+            {/* Cooldown */}
+            <FieldGroup>
+              <FieldLabel>Cooldown (seconds)</FieldLabel>
+              <StyledInput
+                type="number"
+                min={0}
+                placeholder="0 = no cooldown"
+                value={str(selectedNode.data.cooldown, "0")}
+                onChange={(e) =>
+                  updateField("cooldown", Number(e.target.value))
+                }
+              />
+            </FieldGroup>
           </>
         );
 

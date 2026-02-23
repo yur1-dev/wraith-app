@@ -8,7 +8,7 @@ export type WalletType = "phantom" | "metamask";
 export interface ConnectedWallet {
   address: string;
   type: WalletType;
-  label: string; // e.g. "Phantom 1", "MetaMask 2"
+  label: string;
   balance?: string;
   chainId?: string;
   connectedAt: number;
@@ -19,13 +19,11 @@ interface WalletStore {
   activeWalletAddress: string | null;
   isConnecting: boolean;
 
-  // Computed helpers
   activeWallet: () => ConnectedWallet | null;
   isConnected: () => boolean;
   walletAddress: () => string | null;
   walletType: () => WalletType | null;
 
-  // Actions
   connectPhantom: () => Promise<void>;
   connectMetaMask: () => Promise<void>;
   disconnectWallet: (address: string) => void;
@@ -75,12 +73,39 @@ export const useWallet = create<WalletStore>()(
             throw new Error("Phantom wallet not found. Please install it.");
           }
 
-          const response = await win.solana.connect();
-          const address = response.publicKey.toString();
+          let address: string | null = null;
+
+          // Stage 1: already connected — read key directly, no WS handshake
+          if (win.solana.isConnected && win.solana.publicKey) {
+            address = win.solana.publicKey.toString();
+          } else {
+            // Stage 2: silent reconnect for previously approved sites
+            try {
+              const response = await win.solana.connect({
+                onlyIfTrusted: true,
+              });
+              address = response.publicKey.toString();
+            } catch {
+              // Stage 3: full connect (will prompt if first time)
+              try {
+                const response = await win.solana.connect();
+                address = response.publicKey.toString();
+              } catch (err) {
+                // Phantom fired a ws warning but may still have connected
+                if (win.solana.isConnected && win.solana.publicKey) {
+                  address = win.solana.publicKey.toString();
+                } else {
+                  throw err;
+                }
+              }
+            }
+          }
+
+          if (!address)
+            throw new Error("Failed to retrieve Phantom public key.");
 
           const { wallets } = get();
 
-          // Already connected — just switch to it
           if (wallets.find((w) => w.address === address)) {
             set({ activeWalletAddress: address, isConnecting: false });
             return;
@@ -126,7 +151,6 @@ export const useWallet = create<WalletStore>()(
             return;
           }
 
-          // Get chain id
           let chainId: string | undefined;
           try {
             chainId = await win.ethereum.request({ method: "eth_chainId" });

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -9,6 +9,7 @@ import {
   applyEdgeChanges,
   type OnConnect,
   type Node,
+  type Edge,
   type NodeChange,
   type EdgeChange,
   BackgroundVariant,
@@ -41,6 +42,8 @@ import { useFlowStore } from "@/lib/hooks/useFlowStore";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+// nodeTypes must be defined OUTSIDE the component — if defined inside,
+// React sees a new object every render and remounts all nodes.
 const nodeTypes: NodeTypes = {
   trigger: TriggerNode,
   multiWallet: MultiWalletNode,
@@ -63,6 +66,7 @@ const nodeTypes: NodeTypes = {
 };
 
 export function FlowBuilder() {
+  // Read from store
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
   const setNodes = useFlowStore((s) => s.setNodes);
@@ -70,29 +74,43 @@ export function FlowBuilder() {
   const setSelectedNode = useFlowStore((s) => s.setSelectedNode);
   const deleteNode = useFlowStore((s) => s.deleteNode);
 
+  // FIX: Use refs to always have the latest nodes/edges in callbacks
+  // without re-creating the callbacks on every render. This prevents
+  // the stale closure bug where changes stomp each other.
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      setNodes(applyNodeChanges(changes, nodes) as Node[]);
+      // applyNodeChanges needs the current nodes — use ref, not closure
+      const updated = applyNodeChanges(changes, nodesRef.current) as Node[];
+      setNodes(updated);
     },
-    [nodes, setNodes],
+    [setNodes], // setNodes is stable (from zustand), no need for nodes in deps
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      setEdges(applyEdgeChanges(changes, edges));
+      const updated = applyEdgeChanges(changes, edgesRef.current) as Edge[];
+      setEdges(updated);
     },
-    [edges, setEdges],
+    [setEdges],
   );
 
   const onConnect: OnConnect = useCallback(
     (connection) => {
-      setEdges(addEdge(connection, edges));
+      console.log("🔗 Connect:", connection.source, "→", connection.target);
+      setEdges(addEdge(connection, edgesRef.current));
     },
-    [edges, setEdges],
+    [setEdges],
   );
 
+  // FIX: onNodeClick receives the clicked node — pass it to store
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
+      console.log("👆 Clicked node:", node.id, node.type);
       setSelectedNode(node);
     },
     [setSelectedNode],
@@ -103,11 +121,13 @@ export function FlowBuilder() {
   }, [setSelectedNode]);
 
   const deleteSelectedNodes = useCallback(() => {
-    const selectedIds = nodes.filter((n) => n.selected).map((n) => n.id);
+    const selectedIds = nodesRef.current
+      .filter((n) => n.selected)
+      .map((n) => n.id);
     if (selectedIds.length === 0) return;
     selectedIds.forEach((id) => deleteNode(id));
     setSelectedNode(null);
-  }, [nodes, deleteNode, setSelectedNode]);
+  }, [deleteNode, setSelectedNode]);
 
   const selectedNodesCount = nodes.filter((n) => n.selected).length;
 
@@ -186,7 +206,7 @@ export function FlowBuilder() {
         </ReactFlow>
       </div>
 
-      {/* UI panels float above canvas — pointer-events-none on wrapper, restored on children */}
+      {/* UI panels float above canvas */}
       <div className="absolute inset-0 pt-14 pointer-events-none">
         <div className="pointer-events-auto">
           <Toolbar />
