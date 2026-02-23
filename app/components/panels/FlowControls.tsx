@@ -237,7 +237,7 @@ export function FlowControls() {
                     pointerEvents: "none",
                   }}
                 >
-                  FlowDeFi
+                  Wraith
                 </span>
               </div>
               <button

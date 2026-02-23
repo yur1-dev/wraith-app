@@ -1,23 +1,24 @@
 // lib/telegram-store.ts
 // ─────────────────────────────────────────────────────────────
 // In-memory store for development.
-// In production, replace the Map reads/writes with your DB
+// In production, replace Map reads/writes with your DB
 // (Prisma, Supabase, Redis, etc.) — the interface stays the same.
 // ─────────────────────────────────────────────────────────────
 
 interface PendingEntry {
   wallet: string;
-  expiresAt: number; // unix ms
+  expiresAt: number;
 }
 
 // wallet → chatId
 const walletToChatId = new Map<string, string>();
-
+// chatId → wallet (reverse lookup)
+const chatIdToWallet = new Map<string, string>();
 // token → { wallet, expiresAt }
 const pendingTokens = new Map<string, PendingEntry>();
 
 export const telegramStore = {
-  // Called when user clicks "Connect" in the app — reserves a token for them
+  // Called when user clicks "Connect" in the app
   setPending(token: string, wallet: string) {
     pendingTokens.set(token, {
       wallet,
@@ -25,8 +26,8 @@ export const telegramStore = {
     });
   },
 
-  // Called by the webhook when user hits /start <token> in Telegram
-  linkToken(token: string, chatId: string) {
+  // Called by webhook when user hits /start <token>
+  linkToken(token: string, chatId: string): boolean {
     const entry = pendingTokens.get(token);
     if (!entry) return false;
     if (Date.now() > entry.expiresAt) {
@@ -34,6 +35,7 @@ export const telegramStore = {
       return false;
     }
     walletToChatId.set(entry.wallet, chatId);
+    chatIdToWallet.set(chatId, entry.wallet);
     pendingTokens.delete(token);
     return true;
   },
@@ -43,8 +45,27 @@ export const telegramStore = {
     return walletToChatId.get(wallet) ?? null;
   },
 
-  // Called by the flow runner when firing an alert
+  // Called by the flow runner when sending an alert
   isConnected(wallet: string): boolean {
     return walletToChatId.has(wallet);
+  },
+
+  // Called by /status command in bot
+  isConnectedByChatId(chatId: string): boolean {
+    return chatIdToWallet.has(chatId);
+  },
+
+  // Called by /disconnect command in bot
+  disconnectByChatId(chatId: string) {
+    const wallet = chatIdToWallet.get(chatId);
+    if (wallet) walletToChatId.delete(wallet);
+    chatIdToWallet.delete(chatId);
+  },
+
+  // Called by /api/telegram/disconnect (app-side disconnect)
+  removeByWallet(wallet: string) {
+    const chatId = walletToChatId.get(wallet);
+    if (chatId) chatIdToWallet.delete(chatId);
+    walletToChatId.delete(wallet);
   },
 };
