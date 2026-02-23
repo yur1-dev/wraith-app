@@ -6,6 +6,6 @@ export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get("wallet");
   if (!wallet) return NextResponse.json({ chatId: null });
 
-  const chatId = telegramStore.getChatId(wallet);
+  const chatId = await telegramStore.getChatId(wallet);
   return NextResponse.json({ chatId: chatId ?? null });
 }

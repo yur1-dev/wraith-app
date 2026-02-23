@@ -16,7 +16,9 @@ export async function POST(req: NextRequest) {
 
     if (text.startsWith("/start")) {
       const token = text.split(" ")[1];
-      const linked = token ? telegramStore.linkToken(token, chatId) : false;
+      const linked = token
+        ? await telegramStore.linkToken(token, chatId)
+        : false;
 
       if (linked) {
         await send(
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
         );
       }
     } else if (text === "/status") {
-      const connected = telegramStore.isConnectedByChatId(chatId);
+      const connected = await telegramStore.isConnectedByChatId(chatId);
       await send(
         chatId,
         connected
@@ -62,7 +64,7 @@ export async function POST(req: NextRequest) {
             ].join("\n"),
       );
     } else if (text === "/disconnect") {
-      telegramStore.disconnectByChatId(chatId);
+      await telegramStore.disconnectByChatId(chatId);
       await send(
         chatId,
         [

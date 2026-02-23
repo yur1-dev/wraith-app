@@ -1,71 +1,59 @@
 // lib/telegram-store.ts
-// ─────────────────────────────────────────────────────────────
-// In-memory store for development.
-// In production, replace Map reads/writes with your DB
-// (Prisma, Supabase, Redis, etc.) — the interface stays the same.
-// ─────────────────────────────────────────────────────────────
+import { Redis } from "@upstash/redis";
 
-interface PendingEntry {
-  wallet: string;
-  expiresAt: number;
-}
+const kv = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+});
 
-// wallet → chatId
-const walletToChatId = new Map<string, string>();
-// chatId → wallet (reverse lookup)
-const chatIdToWallet = new Map<string, string>();
-// token → { wallet, expiresAt }
-const pendingTokens = new Map<string, PendingEntry>();
+const P = {
+  pending: (token: string) => `tg:pending:${token}`,
+  wallet: (wallet: string) => `tg:wallet:${wallet}`,
+  chat: (chatId: string) => `tg:chat:${chatId}`,
+};
 
 export const telegramStore = {
-  // Called when user clicks "Connect" in the app
-  setPending(token: string, wallet: string) {
-    pendingTokens.set(token, {
-      wallet,
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 min
-    });
+  async setPending(token: string, wallet: string) {
+    await kv.set(P.pending(token), wallet, { ex: 600 }); // 10 min TTL
   },
 
-  // Called by webhook when user hits /start <token>
-  linkToken(token: string, chatId: string): boolean {
-    const entry = pendingTokens.get(token);
-    if (!entry) return false;
-    if (Date.now() > entry.expiresAt) {
-      pendingTokens.delete(token);
-      return false;
-    }
-    walletToChatId.set(entry.wallet, chatId);
-    chatIdToWallet.set(chatId, entry.wallet);
-    pendingTokens.delete(token);
+  async linkToken(token: string, chatId: string): Promise<boolean> {
+    const wallet = await kv.get<string>(P.pending(token));
+    if (!wallet) return false;
+
+    await Promise.all([
+      kv.set(P.wallet(wallet), chatId),
+      kv.set(P.chat(chatId), wallet),
+      kv.del(P.pending(token)),
+    ]);
     return true;
   },
 
-  // Called by /api/telegram/status
-  getChatId(wallet: string): string | null {
-    return walletToChatId.get(wallet) ?? null;
+  async getChatId(wallet: string): Promise<string | null> {
+    return kv.get<string>(P.wallet(wallet));
   },
 
-  // Called by the flow runner when sending an alert
-  isConnected(wallet: string): boolean {
-    return walletToChatId.has(wallet);
+  async isConnected(wallet: string): Promise<boolean> {
+    return (await kv.get(P.wallet(wallet))) !== null;
   },
 
-  // Called by /status command in bot
-  isConnectedByChatId(chatId: string): boolean {
-    return chatIdToWallet.has(chatId);
+  async isConnectedByChatId(chatId: string): Promise<boolean> {
+    return (await kv.get(P.chat(chatId))) !== null;
   },
 
-  // Called by /disconnect command in bot
-  disconnectByChatId(chatId: string) {
-    const wallet = chatIdToWallet.get(chatId);
-    if (wallet) walletToChatId.delete(wallet);
-    chatIdToWallet.delete(chatId);
+  async disconnectByChatId(chatId: string) {
+    const wallet = await kv.get<string>(P.chat(chatId));
+    await Promise.all([
+      wallet ? kv.del(P.wallet(wallet)) : Promise.resolve(),
+      kv.del(P.chat(chatId)),
+    ]);
   },
 
-  // Called by /api/telegram/disconnect (app-side disconnect)
-  removeByWallet(wallet: string) {
-    const chatId = walletToChatId.get(wallet);
-    if (chatId) chatIdToWallet.delete(chatId);
-    walletToChatId.delete(wallet);
+  async removeByWallet(wallet: string) {
+    const chatId = await kv.get<string>(P.wallet(wallet));
+    await Promise.all([
+      kv.del(P.wallet(wallet)),
+      chatId ? kv.del(P.chat(chatId)) : Promise.resolve(),
+    ]);
   },
 };

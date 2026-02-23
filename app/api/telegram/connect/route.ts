@@ -8,11 +8,9 @@ export async function POST(req: NextRequest) {
   if (!wallet)
     return NextResponse.json({ error: "No wallet" }, { status: 400 });
 
-  // Generate a short-lived token to pass as /start payload
   const token = randomBytes(16).toString("hex");
 
-  // Store pending: token → wallet (expires in 10 minutes)
-  telegramStore.setPending(token, wallet);
+  await telegramStore.setPending(token, wallet);
 
   const botUrl = `https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}?start=${token}`;
 
