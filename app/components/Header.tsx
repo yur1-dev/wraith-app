@@ -22,9 +22,13 @@ import {
 import { useWallet } from "@/lib/hooks/useWallet";
 import { WalletConnectModal } from "./WalletConnectModal";
 import { TemplatesGallery } from "./TemplatesGallery";
+import { FlowPersistence } from "./FlowPersistence";
 
-export function Header() {
-  // New multi-wallet store: walletAddress, walletType, isConnected are getter functions
+interface HeaderProps {
+  onTemplateLoad?: () => void;
+}
+
+export function Header({ onTemplateLoad }: HeaderProps) {
   const walletAddress = useWallet((s) => s.walletAddress());
   const walletType = useWallet((s) => s.walletType());
   const isConnected = useWallet((s) => s.isConnected());
@@ -137,8 +141,15 @@ export function Header() {
             </button>
           </div>
 
-          {/* ── Right: Wallet ── */}
+          {/* ── Right: Flow Persistence + Wallet ── */}
           <div className="flex items-center gap-2">
+            <FlowPersistence />
+
+            <div
+              className="h-5 w-px"
+              style={{ background: "rgba(255,255,255,0.08)" }}
+            />
+
             {mounted && isConnected && walletAddress ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -171,7 +182,6 @@ export function Header() {
                     <span className="text-xs font-mono text-cyan-300">
                       {truncateAddress(walletAddress)}
                     </span>
-                    {/* Multi-wallet count badge */}
                     {wallets.length > 1 && (
                       <span
                         className="text-[9px] px-1.5 py-0.5 rounded-full font-bold"
@@ -223,7 +233,6 @@ export function Header() {
                     <p className="text-xs font-mono text-slate-300 truncate">
                       {walletAddress}
                     </p>
-                    {/* Show all wallets if multiple */}
                     {wallets.length > 1 && (
                       <div className="mt-2 space-y-1">
                         {wallets.map((w) => (
@@ -324,6 +333,7 @@ export function Header() {
       <TemplatesGallery
         open={templatesOpen}
         onClose={() => setTemplatesOpen(false)}
+        onAfterLoad={onTemplateLoad}
       />
     </>
   );

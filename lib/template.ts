@@ -71,6 +71,12 @@ export const CATEGORIES: Category[] = [
   { id: "social", label: "Social", emoji: "📱" },
 ];
 
+// Spacing constants
+const V = 280; // vertical gap between nodes — generous breathing room
+const CX = 500; // center X for linear flows
+const LX = 200; // left branch X
+const RX = 800; // right branch X
+
 export const TEMPLATES: FlowTemplate[] = [
   // ── 1. LayerZero Farmer ──────────────────────────────────
   {
@@ -88,7 +94,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "t1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Daily Trigger",
           scheduleType: "daily",
@@ -98,7 +104,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "t2",
         type: "multiWallet",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "10 Farm Wallets",
           wallets: [],
@@ -109,7 +115,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "t3",
         type: "bridge",
-        position: { x: 300, y: 310 },
+        position: { x: CX, y: 60 + V * 2 },
         data: {
           label: "Bridge ETH → ARB",
           fromChain: "ethereum",
@@ -121,7 +127,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "t4",
         type: "swap",
-        position: { x: 300, y: 440 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Swap on Arbitrum",
           fromToken: "ETH",
@@ -134,7 +140,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "t5",
         type: "bridge",
-        position: { x: 300, y: 570 },
+        position: { x: CX, y: 60 + V * 4 },
         data: {
           label: "Bridge ARB → OP",
           fromChain: "arbitrum",
@@ -146,7 +152,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "t6",
         type: "alert",
-        position: { x: 300, y: 700 },
+        position: { x: CX, y: 60 + V * 5 },
         data: {
           label: "Telegram Alert",
           alertType: "telegram",
@@ -179,7 +185,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "d1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Daily 9AM",
           scheduleType: "daily",
@@ -189,7 +195,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "d2",
         type: "swap",
-        position: { x: 150, y: 200 },
+        position: { x: LX, y: 60 + V },
         data: {
           label: "Buy ETH",
           fromToken: "USDC",
@@ -202,7 +208,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "d3",
         type: "swap",
-        position: { x: 450, y: 200 },
+        position: { x: RX, y: 60 + V },
         data: {
           label: "Buy SOL",
           fromToken: "USDC",
@@ -215,13 +221,13 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "d4",
         type: "waitDelay",
-        position: { x: 300, y: 340 },
+        position: { x: CX, y: 60 + V * 2 },
         data: { label: "Wait 5s", duration: 5, unit: "seconds" },
       },
       {
         id: "d5",
         type: "alert",
-        position: { x: 300, y: 460 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Daily Report",
           alertType: "telegram",
@@ -254,19 +260,19 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "v1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: { label: "Manual Trigger", scheduleType: "manual" },
       },
       {
         id: "v2",
         type: "gasOptimizer",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: { label: "Wait Low Gas", maxGas: 20, timeout: 60 },
       },
       {
         id: "v3",
         type: "loop",
-        position: { x: 300, y: 310 },
+        position: { x: CX, y: 60 + V * 2 },
         data: {
           label: "Repeat 10x",
           iterations: 10,
@@ -276,7 +282,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "v4",
         type: "swap",
-        position: { x: 150, y: 440 },
+        position: { x: LX, y: 60 + V * 3 },
         data: {
           label: "USDC → ETH",
           fromToken: "USDC",
@@ -289,7 +295,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "v5",
         type: "waitDelay",
-        position: { x: 300, y: 440 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Random Wait",
           duration: 30,
@@ -301,7 +307,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "v6",
         type: "swap",
-        position: { x: 450, y: 440 },
+        position: { x: RX, y: 60 + V * 3 },
         data: {
           label: "ETH → USDC",
           fromToken: "ETH",
@@ -314,7 +320,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "v7",
         type: "alert",
-        position: { x: 300, y: 580 },
+        position: { x: CX, y: 60 + V * 4 },
         data: {
           label: "Volume Report",
           alertType: "telegram",
@@ -348,7 +354,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "y1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Every 4 Hours",
           scheduleType: "interval",
@@ -358,7 +364,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "y2",
         type: "priceCheck",
-        position: { x: 150, y: 180 },
+        position: { x: LX, y: 60 + V },
         data: {
           label: "Check AAVE APY",
           token: "USDC",
@@ -369,7 +375,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "y3",
         type: "priceCheck",
-        position: { x: 450, y: 180 },
+        position: { x: RX, y: 60 + V },
         data: {
           label: "Check Comp APY",
           token: "USDC",
@@ -380,7 +386,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "y4",
         type: "condition",
-        position: { x: 300, y: 320 },
+        position: { x: CX, y: 60 + V * 2 },
         data: {
           label: "AAVE Better?",
           conditionType: "compare",
@@ -391,7 +397,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "y5",
         type: "lendStake",
-        position: { x: 150, y: 450 },
+        position: { x: LX, y: 60 + V * 3 },
         data: {
           label: "Move to AAVE",
           actionType: "deposit",
@@ -403,7 +409,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "y6",
         type: "lendStake",
-        position: { x: 450, y: 450 },
+        position: { x: RX, y: 60 + V * 3 },
         data: {
           label: "Stay Compound",
           actionType: "compound",
@@ -415,7 +421,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "y7",
         type: "alert",
-        position: { x: 300, y: 580 },
+        position: { x: CX, y: 60 + V * 4 },
         data: {
           label: "Rebalance Alert",
           alertType: "telegram",
@@ -463,7 +469,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "a1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Daily 6AM",
           scheduleType: "daily",
@@ -473,7 +479,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "a2",
         type: "multiWallet",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Farm Wallets",
           wallets: [],
@@ -484,7 +490,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "a3",
         type: "swap",
-        position: { x: 150, y: 320 },
+        position: { x: LX, y: 60 + V * 2 },
         data: {
           label: "On-chain Swap",
           fromToken: "ETH",
@@ -497,7 +503,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "a4",
         type: "bridge",
-        position: { x: 450, y: 320 },
+        position: { x: RX, y: 60 + V * 2 },
         data: {
           label: "Cross-chain Tx",
           fromChain: "ethereum",
@@ -509,7 +515,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "a5",
         type: "twitter",
-        position: { x: 150, y: 460 },
+        position: { x: LX, y: 60 + V * 3 },
         data: {
           label: "Twitter Tasks",
           taskType: "follow",
@@ -519,7 +525,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "a6",
         type: "discord",
-        position: { x: 450, y: 460 },
+        position: { x: RX, y: 60 + V * 3 },
         data: {
           label: "Join Discord",
           taskType: "join",
@@ -529,13 +535,13 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "a7",
         type: "galxe",
-        position: { x: 300, y: 600 },
+        position: { x: CX, y: 60 + V * 4 },
         data: { label: "Complete Galxe", campaignName: "Project Campaign" },
       },
       {
         id: "a8",
         type: "alert",
-        position: { x: 300, y: 730 },
+        position: { x: CX, y: 60 + V * 5 },
         data: {
           label: "Done Alert",
           alertType: "telegram",
@@ -571,7 +577,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "sc1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Weekly Sunday",
           scheduleType: "weekly",
@@ -581,7 +587,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "sc2",
         type: "lendStake",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Stake SOL",
           actionType: "stake",
@@ -593,13 +599,13 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "sc3",
         type: "waitDelay",
-        position: { x: 300, y: 310 },
+        position: { x: CX, y: 60 + V * 2 },
         data: { label: "Wait 7 Days", duration: 7, unit: "days" },
       },
       {
         id: "sc4",
         type: "lendStake",
-        position: { x: 300, y: 440 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Restake Rewards",
           actionType: "stake",
@@ -611,7 +617,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "sc5",
         type: "alert",
-        position: { x: 300, y: 570 },
+        position: { x: CX, y: 60 + V * 4 },
         data: {
           label: "Weekly Report",
           alertType: "telegram",
@@ -643,7 +649,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "cp1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "ETH < $2000",
           scheduleType: "price",
@@ -655,7 +661,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "cp2",
         type: "gasOptimizer",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Fast Execute",
           maxGas: 50,
@@ -667,7 +673,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "cp3",
         type: "swap",
-        position: { x: 300, y: 310 },
+        position: { x: CX, y: 60 + V * 2 },
         data: {
           label: "Exit to USDC",
           fromToken: "ETH",
@@ -680,7 +686,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "cp4",
         type: "alert",
-        position: { x: 300, y: 440 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "🚨 URGENT",
           alertType: "telegram",
@@ -712,7 +718,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "gt1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Daily 10AM",
           scheduleType: "daily",
@@ -722,7 +728,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "gt2",
         type: "multiWallet",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Farm Wallets",
           wallets: [],
@@ -733,7 +739,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "gt3",
         type: "twitter",
-        position: { x: 150, y: 320 },
+        position: { x: LX, y: 60 + V * 2 },
         data: {
           label: "Retweet + Follow",
           taskType: "retweet",
@@ -743,7 +749,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "gt4",
         type: "galxe",
-        position: { x: 450, y: 320 },
+        position: { x: RX, y: 60 + V * 2 },
         data: {
           label: "Galxe Tasks",
           campaignName: "Campaign",
@@ -753,7 +759,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "gt5",
         type: "waitDelay",
-        position: { x: 300, y: 460 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Human Delay",
           duration: 2,
@@ -765,7 +771,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "gt6",
         type: "alert",
-        position: { x: 300, y: 590 },
+        position: { x: CX, y: 60 + V * 4 },
         data: {
           label: "Done",
           alertType: "telegram",
@@ -799,7 +805,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "eb1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "ETH < $2800",
           scheduleType: "price",
@@ -811,7 +817,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "eb2",
         type: "gasOptimizer",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Wait Low Gas",
           maxGas: 25,
@@ -823,7 +829,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "eb3",
         type: "swap",
-        position: { x: 300, y: 310 },
+        position: { x: CX, y: 60 + V * 2 },
         data: {
           label: "Buy ETH",
           fromToken: "USDC",
@@ -836,7 +842,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "eb4",
         type: "alert",
-        position: { x: 300, y: 440 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Bought!",
           alertType: "telegram",
@@ -868,7 +874,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "dg1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Daily 8AM",
           scheduleType: "daily",
@@ -878,7 +884,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "dg2",
         type: "multiWallet",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Farm Wallets",
           wallets: [],
@@ -889,7 +895,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "dg3",
         type: "discord",
-        position: { x: 300, y: 310 },
+        position: { x: CX, y: 60 + V * 2 },
         data: {
           label: "Post GM",
           taskType: "message",
@@ -901,7 +907,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "dg4",
         type: "waitDelay",
-        position: { x: 300, y: 440 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Human Delay",
           duration: 30,
@@ -913,7 +919,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "dg5",
         type: "discord",
-        position: { x: 300, y: 570 },
+        position: { x: CX, y: 60 + V * 4 },
         data: {
           label: "React to Post",
           taskType: "react",
@@ -924,7 +930,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "dg6",
         type: "alert",
-        position: { x: 300, y: 700 },
+        position: { x: CX, y: 60 + V * 5 },
         data: {
           label: "Done",
           alertType: "telegram",
@@ -957,7 +963,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "wi1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "On Incoming TX",
           scheduleType: "wallet",
@@ -968,7 +974,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "wi2",
         type: "alert",
-        position: { x: 300, y: 200 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Telegram Alert",
           alertType: "telegram",
@@ -996,19 +1002,19 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "aw1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: { label: "Hourly", scheduleType: "interval", intervalHours: 1 },
       },
       {
         id: "aw2",
         type: "priceCheck",
-        position: { x: 150, y: 180 },
+        position: { x: LX, y: 60 + V },
         data: { label: "ETH Mainnet", token: "ETH", priceSource: "chainlink" },
       },
       {
         id: "aw3",
         type: "priceCheck",
-        position: { x: 450, y: 180 },
+        position: { x: RX, y: 60 + V },
         data: {
           label: "ETH Arbitrum",
           token: "ETH",
@@ -1018,7 +1024,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "aw4",
         type: "condition",
-        position: { x: 300, y: 320 },
+        position: { x: CX, y: 60 + V * 2 },
         data: {
           label: "Spread > 0.5%?",
           conditionType: "custom",
@@ -1028,7 +1034,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "aw5",
         type: "alert",
-        position: { x: 300, y: 450 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "🚨 Arb Alert",
           alertType: "telegram",
@@ -1062,13 +1068,13 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "cb1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: { label: "Manual", scheduleType: "manual" },
       },
       {
         id: "cb2",
         type: "bridge",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Bridge USDC",
           fromChain: "ethereum",
@@ -1081,13 +1087,13 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "cb3",
         type: "waitDelay",
-        position: { x: 300, y: 310 },
+        position: { x: CX, y: 60 + V * 2 },
         data: { label: "Wait Bridge", duration: 3, unit: "minutes" },
       },
       {
         id: "cb4",
         type: "swap",
-        position: { x: 300, y: 440 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Buy ETH on Arb",
           fromToken: "USDC",
@@ -1100,7 +1106,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "cb5",
         type: "alert",
-        position: { x: 300, y: 570 },
+        position: { x: CX, y: 60 + V * 4 },
         data: {
           label: "Done",
           alertType: "telegram",
@@ -1132,7 +1138,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "acs1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Daily Check",
           scheduleType: "daily",
@@ -1142,7 +1148,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "acs2",
         type: "claimAirdrop",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "Claim Drop",
           projectName: "Project",
@@ -1154,7 +1160,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "acs3",
         type: "condition",
-        position: { x: 300, y: 310 },
+        position: { x: CX, y: 60 + V * 2 },
         data: {
           label: "Claimed?",
           conditionType: "balance",
@@ -1165,7 +1171,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "acs4",
         type: "swap",
-        position: { x: 300, y: 440 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Sell Token",
           fromToken: "TOKEN",
@@ -1178,7 +1184,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "acs5",
         type: "alert",
-        position: { x: 300, y: 570 },
+        position: { x: CX, y: 60 + V * 4 },
         data: {
           label: "Notify",
           alertType: "telegram",
@@ -1211,7 +1217,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "pr1",
         type: "trigger",
-        position: { x: 300, y: 50 },
+        position: { x: CX, y: 60 },
         data: {
           label: "Weekly Sunday",
           scheduleType: "weekly",
@@ -1221,7 +1227,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "pr2",
         type: "swap",
-        position: { x: 300, y: 180 },
+        position: { x: CX, y: 60 + V },
         data: {
           label: "ETH → USDC 50%",
           fromToken: "ETH",
@@ -1234,7 +1240,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "pr3",
         type: "bridge",
-        position: { x: 150, y: 330 },
+        position: { x: LX, y: 60 + V * 2 },
         data: {
           label: "Bridge to Arb",
           fromChain: "ethereum",
@@ -1247,7 +1253,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "pr4",
         type: "lendStake",
-        position: { x: 450, y: 330 },
+        position: { x: RX, y: 60 + V * 2 },
         data: {
           label: "Stake ETH",
           actionType: "stake",
@@ -1259,7 +1265,7 @@ export const TEMPLATES: FlowTemplate[] = [
       {
         id: "pr5",
         type: "alert",
-        position: { x: 300, y: 480 },
+        position: { x: CX, y: 60 + V * 3 },
         data: {
           label: "Weekly Report",
           alertType: "telegram",

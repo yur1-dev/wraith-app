@@ -15,6 +15,7 @@ import type { Node } from "@xyflow/react";
 interface TemplatesGalleryProps {
   open: boolean;
   onClose: () => void;
+  onAfterLoad?: () => void; // called after nodes/edges set so parent (inside ReactFlow) can fitView
 }
 
 const NODE_TYPE_COLORS: Record<string, string> = {
@@ -38,7 +39,11 @@ const NODE_TYPE_COLORS: Record<string, string> = {
   gasOptimizer: "#84cc16",
 };
 
-export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
+export function TemplatesGallery({
+  open,
+  onClose,
+  onAfterLoad,
+}: TemplatesGalleryProps) {
   const { setNodes, setEdges } = useFlowStore();
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [preview, setPreview] = useState<FlowTemplate | null>(null);
@@ -55,10 +60,16 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
     setNodes(template.nodes);
     setEdges(template.edges);
     setJustLoaded(template.id);
+
+    // Let the parent (which lives inside ReactFlow provider) call fitView
+    setTimeout(() => {
+      onAfterLoad?.();
+    }, 80);
+
     setTimeout(() => {
       setJustLoaded(null);
       onClose();
-    }, 800);
+    }, 900);
   };
 
   return (
@@ -208,7 +219,7 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
 
                   <div className="p-4">
                     <div className="flex items-start gap-3">
-                      {/* Color icon box — category initial instead of emoji */}
+                      {/* Color icon box */}
                       <div
                         style={{
                           width: 40,
@@ -410,7 +421,6 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                 flexShrink: 0,
               }}
             >
-              {/* Accent line for this template */}
               <div
                 style={{
                   height: 2,
@@ -485,7 +495,6 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                           gap: 12,
                         }}
                       >
-                        {/* Type badge circle instead of emoji */}
                         <div
                           style={{
                             width: 30,
