@@ -347,3 +347,17 @@ html.light .react-flow__minimap {
 .react-flow__selectionpane {
   cursor: crosshair;
 }
+
+/* Hide number input spinners globally — add this to your globals.css */
+
+/* Chrome, Safari, Edge */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type="number"] {
+  -moz-appearance: textfield;
+}

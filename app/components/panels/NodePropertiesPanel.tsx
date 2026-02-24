@@ -3,20 +3,17 @@
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   X,
   Trash2,
   ChevronRight,
   ExternalLink,
   CheckCircle2,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { useTelegram } from "@/lib/hooks/useTelegram";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 
 const str = (val: unknown, fallback = ""): string =>
   typeof val === "string" ? val : fallback;
@@ -49,7 +46,7 @@ const NODE_COLORS: Record<string, string> = {
 };
 
 const NODE_LABELS: Record<string, string> = {
-  trigger: "SCHEDULE TRIGGER",
+  trigger: "TRIGGER",
   multiWallet: "MULTI-WALLET",
   swap: "TOKEN SWAP",
   bridge: "BRIDGE",
@@ -76,7 +73,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   urgent: "#f87171",
 };
 
-const TELEGRAM_BOT_USERNAME = "wraithopxzbot"; // replace with your bot
+// ── Reusable primitives ───────────────────────────────────────────────────────
 
 function FieldGroup({ children }: { children: React.ReactNode }) {
   return <div className="space-y-1.5">{children}</div>;
@@ -84,7 +81,7 @@ function FieldGroup({ children }: { children: React.ReactNode }) {
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] font-mono font-semibold tracking-widest text-cyan-500/70 uppercase">
+    <div className="text-[9px] font-mono font-bold tracking-widest text-slate-500 uppercase">
       {children}
     </div>
   );
@@ -99,27 +96,6 @@ function StyledInput(props: React.ComponentProps<typeof Input>) {
         placeholder:text-slate-600 transition-colors
         ${props.className ?? ""}`}
     />
-  );
-}
-
-function StyledSelect({
-  value,
-  onValueChange,
-  children,
-}: {
-  value: string;
-  onValueChange: (v: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger className="h-8 bg-slate-950 border-slate-700/80 text-cyan-100 text-xs font-mono focus:border-cyan-500 focus:ring-0">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent className="bg-slate-900 border-slate-700 text-cyan-100 text-xs font-mono">
-        {children}
-      </SelectContent>
-    </Select>
   );
 }
 
@@ -191,18 +167,192 @@ function StyledCheckbox({
   );
 }
 
-const CHAIN_OPTIONS = (
-  <>
-    <SelectItem value="solana">Solana</SelectItem>
-    <SelectItem value="ethereum">Ethereum</SelectItem>
-    <SelectItem value="arbitrum">Arbitrum</SelectItem>
-    <SelectItem value="optimism">Optimism</SelectItem>
-    <SelectItem value="base">Base</SelectItem>
-    <SelectItem value="polygon">Polygon</SelectItem>
-    <SelectItem value="bsc">BSC</SelectItem>
-  </>
-);
+// ── Portal dropdown — renders outside panel so it's never clipped ─────────────
+function StyledSelect({
+  options,
+  value,
+  onChange,
+  accent,
+  placeholder,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  accent: string;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const selected = options.find((o) => o.value === value);
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const dropdownHeight = Math.min(options.length * 36 + 8, 220);
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const showAbove = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+
+    setDropdownStyle({
+      position: "fixed",
+      left: `${rect.left}px`,
+      width: `${rect.width}px`,
+      zIndex: 99999,
+      top: showAbove
+        ? `${rect.top - dropdownHeight - 4}px`
+        : `${rect.bottom + 4}px`,
+    });
+  }, [options.length]);
+
+  const handleOpen = () => {
+    updatePosition();
+    setOpen((o) => !o);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        triggerRef.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
+      )
+        return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [open, updatePosition]);
+
+  const dropdown = open ? (
+    <div
+      ref={dropdownRef}
+      style={{
+        ...dropdownStyle,
+        background: "rgba(2, 6, 23, 0.99)",
+        border: `1px solid ${accent}44`,
+        borderRadius: "8px",
+        boxShadow: `0 16px 48px rgba(0,0,0,0.9), 0 0 24px ${accent}15`,
+        backdropFilter: "blur(24px)",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          height: "1px",
+          background: `linear-gradient(90deg, ${accent}90, transparent 70%)`,
+        }}
+      />
+      <div style={{ padding: "4px 0", maxHeight: "210px", overflowY: "auto" }}>
+        {options.map((opt) => {
+          const active = opt.value === value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2
+                text-xs font-mono cursor-pointer transition-all duration-100"
+              style={
+                active
+                  ? { background: `${accent}18`, color: accent }
+                  : {
+                      color: "rgba(148,163,184,0.75)",
+                      background: "transparent",
+                    }
+              }
+              onMouseEnter={(e) => {
+                if (!active) {
+                  (e.currentTarget as HTMLButtonElement).style.background =
+                    `${accent}0d`;
+                  (e.currentTarget as HTMLButtonElement).style.color =
+                    "rgba(203,213,225,0.9)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!active) {
+                  (e.currentTarget as HTMLButtonElement).style.background =
+                    "transparent";
+                  (e.currentTarget as HTMLButtonElement).style.color =
+                    "rgba(148,163,184,0.75)";
+                }
+              }}
+            >
+              <span>{opt.label}</span>
+              {active && (
+                <Check className="w-3 h-3 shrink-0" style={{ color: accent }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div className="relative w-full">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={handleOpen}
+        className="w-full h-8 flex items-center justify-between px-3 rounded-md text-xs font-mono
+          transition-all duration-150 cursor-pointer"
+        style={{
+          background: open ? `${accent}12` : "rgba(2, 6, 23, 0.9)",
+          border: open
+            ? `1px solid ${accent}55`
+            : "1px solid rgba(51,65,85,0.8)",
+          color: selected ? "#a5f3fc" : "rgba(100,116,139,0.6)",
+        }}
+      >
+        <span className="truncate">
+          {selected ? selected.label : (placeholder ?? "Select...")}
+        </span>
+        <ChevronDown
+          className="w-3 h-3 shrink-0 ml-2"
+          style={{
+            color: accent,
+            opacity: 0.7,
+            transition: "transform 200ms",
+            transform: open ? "rotate(180deg)" : "rotate(0deg)",
+          }}
+        />
+      </button>
+
+      {typeof document !== "undefined" && dropdown
+        ? createPortal(dropdown, document.body)
+        : null}
+    </div>
+  );
+}
+
+// ── Chain options shared ──────────────────────────────────────────────────────
+const CHAINS = [
+  { value: "ethereum", label: "Ethereum" },
+  { value: "solana", label: "Solana" },
+  { value: "arbitrum", label: "Arbitrum" },
+  { value: "optimism", label: "Optimism" },
+  { value: "base", label: "Base" },
+  { value: "polygon", label: "Polygon" },
+  { value: "bsc", label: "BSC" },
+];
+
+// ── Main component ────────────────────────────────────────────────────────────
 export function NodePropertiesPanel() {
   const selectedNode = useFlowStore((s) =>
     s.selectedNodeId
@@ -212,7 +362,7 @@ export function NodePropertiesPanel() {
   const setSelectedNode = useFlowStore((s) => s.setSelectedNode);
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
   const deleteNode = useFlowStore((s) => s.deleteNode);
-  const { isConnected: tgConnected, checkConnection } = useTelegram();
+  const { isConnected: tgConnected, openBot } = useTelegram();
 
   if (!selectedNode) return null;
 
@@ -232,52 +382,150 @@ export function NodePropertiesPanel() {
   const updateField = (field: string, value: unknown) =>
     updateNodeData(selectedNode.id, { [field]: value });
 
-  const handleOpenBot = () => {
-    window.open(`https://t.me/${TELEGRAM_BOT_USERNAME}`, "_blank");
-    const interval = setInterval(() => checkConnection(), 3000);
-    setTimeout(() => clearInterval(interval), 60000);
-  };
-
   const renderFields = () => {
     switch (selectedNode.type) {
-      case "trigger":
+      // ── TRIGGER ─────────────────────────────────────────────────────────────
+      case "trigger": {
+        const triggerType = str(selectedNode.data.triggerType, "schedule");
+        const schedulePreset = str(selectedNode.data.schedulePreset, "Daily");
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Schedule Type</FieldLabel>
+              <FieldLabel>Trigger Type</FieldLabel>
               <StyledSelect
-                value={str(selectedNode.data.scheduleType, "daily")}
-                onValueChange={(v) => updateField("scheduleType", v)}
-              >
-                <SelectItem value="once">Once</SelectItem>
-                <SelectItem value="daily">Daily</SelectItem>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="custom">Custom Cron</SelectItem>
-              </StyledSelect>
-            </FieldGroup>
-            <FieldGroup>
-              <FieldLabel>Time</FieldLabel>
-              <StyledInput
-                type="time"
-                value={str(selectedNode.data.scheduleTime, "03:00")}
-                onChange={(e) => updateField("scheduleTime", e.target.value)}
+                accent={accent}
+                value={triggerType}
+                onChange={(v) => updateField("triggerType", v)}
+                options={[
+                  { value: "schedule", label: "Schedule" },
+                  { value: "price", label: "Price Alert" },
+                  { value: "wallet", label: "Wallet Event" },
+                  { value: "manual", label: "Manual" },
+                ]}
               />
             </FieldGroup>
-            {selectedNode.data.scheduleType === "custom" && (
-              <FieldGroup>
-                <FieldLabel>Cron Expression</FieldLabel>
-                <StyledInput
-                  placeholder="0 3 * * *"
-                  value={str(selectedNode.data.cronExpression)}
-                  onChange={(e) =>
-                    updateField("cronExpression", e.target.value)
-                  }
-                />
-              </FieldGroup>
+
+            {triggerType === "schedule" && (
+              <>
+                <FieldGroup>
+                  <FieldLabel>Frequency</FieldLabel>
+                  <StyledSelect
+                    accent={accent}
+                    value={schedulePreset}
+                    onChange={(v) => updateField("schedulePreset", v)}
+                    options={[
+                      { value: "Hourly", label: "Hourly" },
+                      { value: "Every 6h", label: "Every 6 Hours" },
+                      { value: "Daily", label: "Daily" },
+                      { value: "Weekly", label: "Weekly" },
+                      { value: "Custom", label: "Custom Cron" },
+                    ]}
+                  />
+                </FieldGroup>
+                {(schedulePreset === "Daily" ||
+                  schedulePreset === "Weekly") && (
+                  <FieldGroup>
+                    <FieldLabel>Time (UTC)</FieldLabel>
+                    <StyledInput
+                      type="time"
+                      value={str(selectedNode.data.scheduleTime, "03:00")}
+                      onChange={(e) =>
+                        updateField("scheduleTime", e.target.value)
+                      }
+                    />
+                  </FieldGroup>
+                )}
+                {schedulePreset === "Custom" && (
+                  <FieldGroup>
+                    <FieldLabel>Cron Expression</FieldLabel>
+                    <StyledInput
+                      placeholder="0 */6 * * *"
+                      value={str(selectedNode.data.cronExpression)}
+                      onChange={(e) =>
+                        updateField("cronExpression", e.target.value)
+                      }
+                    />
+                  </FieldGroup>
+                )}
+              </>
+            )}
+
+            {triggerType === "price" && (
+              <>
+                <FieldGroup>
+                  <FieldLabel>Token</FieldLabel>
+                  <StyledInput
+                    placeholder="SOL, ETH, BTC..."
+                    value={str(selectedNode.data.token, "SOL")}
+                    onChange={(e) =>
+                      updateField("token", e.target.value.toUpperCase())
+                    }
+                  />
+                </FieldGroup>
+                <FieldGroup>
+                  <FieldLabel>Condition</FieldLabel>
+                  <StyledSelect
+                    accent={accent}
+                    value={str(selectedNode.data.priceCondition, "Above")}
+                    onChange={(v) => updateField("priceCondition", v)}
+                    options={[
+                      { value: "Above", label: "Above" },
+                      { value: "Below", label: "Below" },
+                      { value: "Crosses Up", label: "Crosses Up" },
+                      { value: "Crosses Down", label: "Crosses Down" },
+                    ]}
+                  />
+                </FieldGroup>
+                <FieldGroup>
+                  <FieldLabel>Target Price (USD)</FieldLabel>
+                  <StyledInput
+                    type="number"
+                    placeholder="0.00"
+                    value={str(selectedNode.data.priceTarget)}
+                    onChange={(e) => updateField("priceTarget", e.target.value)}
+                  />
+                </FieldGroup>
+              </>
+            )}
+
+            {triggerType === "wallet" && (
+              <>
+                <FieldGroup>
+                  <FieldLabel>Event Type</FieldLabel>
+                  <StyledSelect
+                    accent={accent}
+                    value={str(selectedNode.data.walletEvent, "Incoming TX")}
+                    onChange={(v) => updateField("walletEvent", v)}
+                    options={[
+                      { value: "Incoming TX", label: "Incoming TX" },
+                      { value: "Outgoing TX", label: "Outgoing TX" },
+                      { value: "Balance Change", label: "Balance Change" },
+                      { value: "Token Received", label: "Token Received" },
+                    ]}
+                  />
+                </FieldGroup>
+                <FieldGroup>
+                  <FieldLabel>Min Amount (optional)</FieldLabel>
+                  <StyledInput
+                    type="number"
+                    placeholder="0.00"
+                    value={str(selectedNode.data.minAmount)}
+                    onChange={(e) => updateField("minAmount", e.target.value)}
+                  />
+                </FieldGroup>
+              </>
+            )}
+
+            {triggerType === "manual" && (
+              <p className="text-[10px] font-mono text-slate-500 leading-relaxed py-1">
+                // fires when flow is manually executed from the toolbar
+              </p>
             )}
           </>
         );
+      }
 
+      // ── MULTI-WALLET ─────────────────────────────────────────────────────────
       case "multiWallet":
         return (
           <>
@@ -294,7 +542,7 @@ export function NodePropertiesPanel() {
                   )
                 }
               />
-              <div className="text-[10px] font-mono text-slate-600">
+              <div className="text-[9px] font-mono text-slate-600">
                 // one per line
               </div>
             </FieldGroup>
@@ -309,12 +557,13 @@ export function NodePropertiesPanel() {
           </>
         );
 
+      // ── SWAP ─────────────────────────────────────────────────────────────────
       case "swap":
         return (
           <>
             <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
-                <FieldLabel>From</FieldLabel>
+                <FieldLabel>From Token</FieldLabel>
                 <StyledInput
                   placeholder="USDC"
                   value={str(selectedNode.data.fromToken)}
@@ -322,7 +571,7 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
               <FieldGroup>
-                <FieldLabel>To</FieldLabel>
+                <FieldLabel>To Token</FieldLabel>
                 <StyledInput
                   placeholder="SOL"
                   value={str(selectedNode.data.toToken)}
@@ -354,52 +603,55 @@ export function NodePropertiesPanel() {
             <FieldGroup>
               <FieldLabel>DEX</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.dex, "jupiter")}
-                onValueChange={(v) => updateField("dex", v)}
-              >
-                <SelectItem value="jupiter">Jupiter (Solana)</SelectItem>
-                <SelectItem value="uniswap">Uniswap (Ethereum)</SelectItem>
-                <SelectItem value="raydium">Raydium (Solana)</SelectItem>
-                <SelectItem value="pancakeswap">PancakeSwap (BSC)</SelectItem>
-              </StyledSelect>
+                onChange={(v) => updateField("dex", v)}
+                options={[
+                  { value: "jupiter", label: "Jupiter" },
+                  { value: "uniswap", label: "Uniswap" },
+                  { value: "raydium", label: "Raydium" },
+                  { value: "pancakeswap", label: "PancakeSwap" },
+                ]}
+              />
             </FieldGroup>
           </>
         );
 
+      // ── BRIDGE ───────────────────────────────────────────────────────────────
       case "bridge":
         return (
           <>
-            <div className="grid grid-cols-2 gap-2">
-              <FieldGroup>
-                <FieldLabel>From Chain</FieldLabel>
-                <StyledSelect
-                  value={str(selectedNode.data.fromChain, "ethereum")}
-                  onValueChange={(v) => updateField("fromChain", v)}
-                >
-                  {CHAIN_OPTIONS}
-                </StyledSelect>
-              </FieldGroup>
-              <FieldGroup>
-                <FieldLabel>To Chain</FieldLabel>
-                <StyledSelect
-                  value={str(selectedNode.data.toChain, "arbitrum")}
-                  onValueChange={(v) => updateField("toChain", v)}
-                >
-                  {CHAIN_OPTIONS}
-                </StyledSelect>
-              </FieldGroup>
-            </div>
+            <FieldGroup>
+              <FieldLabel>From Chain</FieldLabel>
+              <StyledSelect
+                accent={accent}
+                value={str(selectedNode.data.fromChain, "ethereum")}
+                onChange={(v) => updateField("fromChain", v)}
+                options={CHAINS}
+              />
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>To Chain</FieldLabel>
+              <StyledSelect
+                accent={accent}
+                value={str(selectedNode.data.toChain, "arbitrum")}
+                onChange={(v) => updateField("toChain", v)}
+                options={CHAINS}
+              />
+            </FieldGroup>
             <FieldGroup>
               <FieldLabel>Bridge Protocol</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.bridgeProtocol, "layerzero")}
-                onValueChange={(v) => updateField("bridgeProtocol", v)}
-              >
-                <SelectItem value="layerzero">LayerZero</SelectItem>
-                <SelectItem value="stargate">Stargate</SelectItem>
-                <SelectItem value="wormhole">Wormhole</SelectItem>
-                <SelectItem value="across">Across</SelectItem>
-              </StyledSelect>
+                onChange={(v) => updateField("bridgeProtocol", v)}
+                options={[
+                  { value: "layerzero", label: "LayerZero" },
+                  { value: "stargate", label: "Stargate" },
+                  { value: "wormhole", label: "Wormhole" },
+                  { value: "across", label: "Across" },
+                ]}
+              />
             </FieldGroup>
             <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
@@ -423,27 +675,28 @@ export function NodePropertiesPanel() {
           </>
         );
 
+      // ── CHAIN SWITCH ─────────────────────────────────────────────────────────
       case "chainSwitch":
         return (
           <FieldGroup>
             <FieldLabel>Target Chain</FieldLabel>
             <StyledSelect
+              accent={accent}
               value={str(selectedNode.data.targetChain, "ethereum")}
-              onValueChange={(v) => updateField("targetChain", v)}
-            >
-              {CHAIN_OPTIONS}
-            </StyledSelect>
+              onChange={(v) => updateField("targetChain", v)}
+              options={CHAINS}
+            />
           </FieldGroup>
         );
 
-      // ✅ FIXED: No chat ID. Severity buttons. Telegram connect flow. Channel-specific fields.
-      case "alert":
+      // ── ALERT ────────────────────────────────────────────────────────────────
+      case "alert": {
+        const alertType = str(selectedNode.data.alertType, "Telegram");
         return (
           <>
-            {/* Severity */}
             <FieldGroup>
               <FieldLabel>Severity</FieldLabel>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-4 gap-1">
                 {(["info", "success", "warning", "urgent"] as const).map(
                   (s) => {
                     const active =
@@ -453,7 +706,7 @@ export function NodePropertiesPanel() {
                       <button
                         key={s}
                         onClick={() => updateField("severity", s)}
-                        className="h-7 rounded-md border text-[9px] font-mono font-bold uppercase tracking-widest transition-all cursor-pointer"
+                        className="h-7 rounded-lg border text-[8px] font-mono font-bold uppercase tracking-widest transition-all cursor-pointer"
                         style={
                           active
                             ? {
@@ -476,22 +729,22 @@ export function NodePropertiesPanel() {
               </div>
             </FieldGroup>
 
-            {/* Channel */}
             <FieldGroup>
               <FieldLabel>Channel</FieldLabel>
               <StyledSelect
-                value={str(selectedNode.data.alertType, "Telegram")}
-                onValueChange={(v) => updateField("alertType", v)}
-              >
-                <SelectItem value="Telegram">Telegram</SelectItem>
-                <SelectItem value="Discord">Discord</SelectItem>
-                <SelectItem value="Email">Email</SelectItem>
-                <SelectItem value="Webhook">Webhook</SelectItem>
-              </StyledSelect>
+                accent={accent}
+                value={alertType}
+                onChange={(v) => updateField("alertType", v)}
+                options={[
+                  { value: "Telegram", label: "Telegram" },
+                  { value: "Discord", label: "Discord" },
+                  { value: "Email", label: "Email" },
+                  { value: "Webhook", label: "Webhook" },
+                ]}
+              />
             </FieldGroup>
 
-            {/* Telegram — connect flow instead of chat ID */}
-            {selectedNode.data.alertType === "Telegram" && (
+            {alertType === "Telegram" && (
               <div
                 className="rounded-lg p-3 space-y-2"
                 style={{
@@ -516,25 +769,24 @@ export function NodePropertiesPanel() {
                   </div>
                   {!tgConnected && (
                     <button
-                      onClick={handleOpenBot}
+                      onClick={openBot}
                       className="flex items-center gap-1 text-[8px] font-mono font-bold uppercase tracking-widest
                         px-2 py-1 rounded border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10
                         transition-all cursor-pointer"
                     >
-                      Open bot <ExternalLink className="w-2.5 h-2.5" />
+                      Connect <ExternalLink className="w-2.5 h-2.5" />
                     </button>
                   )}
                 </div>
                 <p className="text-[9px] font-mono text-slate-500 leading-relaxed">
                   {tgConnected
                     ? "Alerts will be sent to your Telegram private chat."
-                    : `Open @${TELEGRAM_BOT_USERNAME} in Telegram and hit Start. Alerts will go directly to you — no config needed.`}
+                    : "Click Connect — the bot opens with your token. Hit Start in Telegram and this will update automatically."}
                 </p>
               </div>
             )}
 
-            {/* Discord */}
-            {selectedNode.data.alertType === "Discord" && (
+            {(alertType === "Discord" || alertType === "Webhook") && (
               <FieldGroup>
                 <FieldLabel>Webhook URL</FieldLabel>
                 <StyledInput
@@ -545,8 +797,7 @@ export function NodePropertiesPanel() {
               </FieldGroup>
             )}
 
-            {/* Email */}
-            {selectedNode.data.alertType === "Email" && (
+            {alertType === "Email" && (
               <>
                 <FieldGroup>
                   <FieldLabel>To Address</FieldLabel>
@@ -569,19 +820,6 @@ export function NodePropertiesPanel() {
               </>
             )}
 
-            {/* Webhook */}
-            {selectedNode.data.alertType === "Webhook" && (
-              <FieldGroup>
-                <FieldLabel>Webhook URL</FieldLabel>
-                <StyledInput
-                  placeholder="https://..."
-                  value={str(selectedNode.data.webhookUrl)}
-                  onChange={(e) => updateField("webhookUrl", e.target.value)}
-                />
-              </FieldGroup>
-            )}
-
-            {/* Message */}
             <FieldGroup>
               <FieldLabel>Message</FieldLabel>
               <StyledTextarea
@@ -592,7 +830,6 @@ export function NodePropertiesPanel() {
               />
             </FieldGroup>
 
-            {/* Cooldown */}
             <FieldGroup>
               <FieldLabel>Cooldown (seconds)</FieldLabel>
               <StyledInput
@@ -607,23 +844,28 @@ export function NodePropertiesPanel() {
             </FieldGroup>
           </>
         );
+      }
 
-      case "condition":
+      // ── CONDITION ────────────────────────────────────────────────────────────
+      case "condition": {
+        const conditionType = str(selectedNode.data.conditionType, "price");
         return (
           <>
             <FieldGroup>
               <FieldLabel>Condition Type</FieldLabel>
               <StyledSelect
-                value={str(selectedNode.data.conditionType, "price")}
-                onValueChange={(v) => updateField("conditionType", v)}
-              >
-                <SelectItem value="price">Price</SelectItem>
-                <SelectItem value="balance">Balance</SelectItem>
-                <SelectItem value="gas">Gas Fee</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
-              </StyledSelect>
+                accent={accent}
+                value={conditionType}
+                onChange={(v) => updateField("conditionType", v)}
+                options={[
+                  { value: "price", label: "Price" },
+                  { value: "balance", label: "Balance" },
+                  { value: "gas", label: "Gas Fee" },
+                  { value: "custom", label: "Custom Expression" },
+                ]}
+              />
             </FieldGroup>
-            {selectedNode.data.conditionType === "price" && (
+            {conditionType === "price" && (
               <FieldGroup>
                 <FieldLabel>Token</FieldLabel>
                 <StyledInput
@@ -633,30 +875,30 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <FieldGroup>
-                <FieldLabel>Operator</FieldLabel>
-                <StyledSelect
-                  value={str(selectedNode.data.operator, ">")}
-                  onValueChange={(v) => updateField("operator", v)}
-                >
-                  <SelectItem value=">">Greater &gt;</SelectItem>
-                  <SelectItem value="<">Less &lt;</SelectItem>
-                  <SelectItem value="=">Equal =</SelectItem>
-                  <SelectItem value=">=">≥ or equal</SelectItem>
-                  <SelectItem value="<=">≤ or equal</SelectItem>
-                </StyledSelect>
-              </FieldGroup>
-              <FieldGroup>
-                <FieldLabel>Value</FieldLabel>
-                <StyledInput
-                  placeholder="100"
-                  value={str(selectedNode.data.value)}
-                  onChange={(e) => updateField("value", e.target.value)}
-                />
-              </FieldGroup>
-            </div>
-            {selectedNode.data.conditionType === "custom" && (
+            <FieldGroup>
+              <FieldLabel>Operator</FieldLabel>
+              <StyledSelect
+                accent={accent}
+                value={str(selectedNode.data.operator, ">")}
+                onChange={(v) => updateField("operator", v)}
+                options={[
+                  { value: ">", label: "Greater than  ( > )" },
+                  { value: "<", label: "Less than  ( < )" },
+                  { value: "=", label: "Equal to  ( = )" },
+                  { value: ">=", label: "Greater or equal  ( >= )" },
+                  { value: "<=", label: "Less or equal  ( <= )" },
+                ]}
+              />
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Value</FieldLabel>
+              <StyledInput
+                placeholder="100"
+                value={str(selectedNode.data.value)}
+                onChange={(e) => updateField("value", e.target.value)}
+              />
+            </FieldGroup>
+            {conditionType === "custom" && (
               <FieldGroup>
                 <FieldLabel>Expression</FieldLabel>
                 <StyledInput
@@ -668,22 +910,26 @@ export function NodePropertiesPanel() {
             )}
           </>
         );
+      }
 
+      // ── WALLET CONNECT ───────────────────────────────────────────────────────
       case "walletConnect":
         return (
           <>
             <FieldGroup>
               <FieldLabel>Wallet Type</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.walletType, "metamask")}
-                onValueChange={(v) => updateField("walletType", v)}
-              >
-                <SelectItem value="metamask">MetaMask</SelectItem>
-                <SelectItem value="phantom">Phantom</SelectItem>
-                <SelectItem value="rabby">Rabby</SelectItem>
-                <SelectItem value="coinbase">Coinbase Wallet</SelectItem>
-                <SelectItem value="walletconnect">WalletConnect</SelectItem>
-              </StyledSelect>
+                onChange={(v) => updateField("walletType", v)}
+                options={[
+                  { value: "metamask", label: "MetaMask" },
+                  { value: "phantom", label: "Phantom" },
+                  { value: "rabby", label: "Rabby" },
+                  { value: "coinbase", label: "Coinbase Wallet" },
+                  { value: "walletconnect", label: "WalletConnect" },
+                ]}
+              />
             </FieldGroup>
             <FieldGroup>
               <FieldLabel>Wallet Address</FieldLabel>
@@ -697,29 +943,32 @@ export function NodePropertiesPanel() {
             <FieldGroup>
               <FieldLabel>Chain</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.chain, "ethereum")}
-                onValueChange={(v) => updateField("chain", v)}
-              >
-                {CHAIN_OPTIONS}
-              </StyledSelect>
+                onChange={(v) => updateField("chain", v)}
+                options={CHAINS}
+              />
             </FieldGroup>
           </>
         );
 
+      // ── LEND / STAKE ─────────────────────────────────────────────────────────
       case "lendStake":
         return (
           <>
             <FieldGroup>
               <FieldLabel>Action</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.actionType, "lend")}
-                onValueChange={(v) => updateField("actionType", v)}
-              >
-                <SelectItem value="lend">Lend</SelectItem>
-                <SelectItem value="stake">Stake</SelectItem>
-                <SelectItem value="unstake">Unstake</SelectItem>
-                <SelectItem value="withdraw">Withdraw</SelectItem>
-              </StyledSelect>
+                onChange={(v) => updateField("actionType", v)}
+                options={[
+                  { value: "lend", label: "Lend" },
+                  { value: "stake", label: "Stake" },
+                  { value: "unstake", label: "Unstake" },
+                  { value: "withdraw", label: "Withdraw" },
+                ]}
+              />
             </FieldGroup>
             <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
@@ -743,44 +992,50 @@ export function NodePropertiesPanel() {
             <FieldGroup>
               <FieldLabel>Protocol</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.protocol, "aave")}
-                onValueChange={(v) => updateField("protocol", v)}
-              >
-                <SelectItem value="aave">AAVE</SelectItem>
-                <SelectItem value="compound">Compound</SelectItem>
-                <SelectItem value="kamino">Kamino (Solana)</SelectItem>
-                <SelectItem value="marginfi">MarginFi (Solana)</SelectItem>
-                <SelectItem value="lido">Lido</SelectItem>
-                <SelectItem value="jito">Jito (Solana)</SelectItem>
-              </StyledSelect>
+                onChange={(v) => updateField("protocol", v)}
+                options={[
+                  { value: "aave", label: "AAVE" },
+                  { value: "compound", label: "Compound" },
+                  { value: "kamino", label: "Kamino" },
+                  { value: "marginfi", label: "MarginFi" },
+                  { value: "lido", label: "Lido" },
+                  { value: "jito", label: "Jito" },
+                ]}
+              />
             </FieldGroup>
             <FieldGroup>
               <FieldLabel>Chain</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.chain, "ethereum")}
-                onValueChange={(v) => updateField("chain", v)}
-              >
-                {CHAIN_OPTIONS}
-              </StyledSelect>
+                onChange={(v) => updateField("chain", v)}
+                options={CHAINS}
+              />
             </FieldGroup>
           </>
         );
 
-      case "twitter":
+      // ── TWITTER ──────────────────────────────────────────────────────────────
+      case "twitter": {
+        const taskType = str(selectedNode.data.taskType, "follow");
         return (
           <>
             <FieldGroup>
               <FieldLabel>Task Type</FieldLabel>
               <StyledSelect
-                value={str(selectedNode.data.taskType, "follow")}
-                onValueChange={(v) => updateField("taskType", v)}
-              >
-                <SelectItem value="follow">Follow Account</SelectItem>
-                <SelectItem value="like">Like Tweet</SelectItem>
-                <SelectItem value="retweet">Retweet</SelectItem>
-                <SelectItem value="quote">Quote Tweet</SelectItem>
-                <SelectItem value="tweet">Post Tweet</SelectItem>
-              </StyledSelect>
+                accent={accent}
+                value={taskType}
+                onChange={(v) => updateField("taskType", v)}
+                options={[
+                  { value: "follow", label: "Follow" },
+                  { value: "like", label: "Like" },
+                  { value: "retweet", label: "Retweet" },
+                  { value: "quote", label: "Quote Tweet" },
+                  { value: "tweet", label: "Post Tweet" },
+                ]}
+              />
             </FieldGroup>
             <FieldGroup>
               <FieldLabel>Target</FieldLabel>
@@ -790,13 +1045,12 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("target", e.target.value)}
               />
             </FieldGroup>
-            {(selectedNode.data.taskType === "quote" ||
-              selectedNode.data.taskType === "tweet") && (
+            {(taskType === "quote" || taskType === "tweet") && (
               <FieldGroup>
                 <FieldLabel>Tweet Text</FieldLabel>
                 <StyledTextarea
                   rows={3}
-                  placeholder="GM frens 🌅"
+                  placeholder="gm frens"
                   value={str(selectedNode.data.tweetText)}
                   onChange={(e) => updateField("tweetText", e.target.value)}
                 />
@@ -804,21 +1058,26 @@ export function NodePropertiesPanel() {
             )}
           </>
         );
+      }
 
-      case "discord":
+      // ── DISCORD ──────────────────────────────────────────────────────────────
+      case "discord": {
+        const taskType = str(selectedNode.data.taskType, "join");
         return (
           <>
             <FieldGroup>
               <FieldLabel>Task Type</FieldLabel>
               <StyledSelect
-                value={str(selectedNode.data.taskType, "join")}
-                onValueChange={(v) => updateField("taskType", v)}
-              >
-                <SelectItem value="join">Join Server</SelectItem>
-                <SelectItem value="react">React to Message</SelectItem>
-                <SelectItem value="message">Send Message</SelectItem>
-                <SelectItem value="role">Get Role</SelectItem>
-              </StyledSelect>
+                accent={accent}
+                value={taskType}
+                onChange={(v) => updateField("taskType", v)}
+                options={[
+                  { value: "join", label: "Join Server" },
+                  { value: "react", label: "React to Message" },
+                  { value: "message", label: "Send Message" },
+                  { value: "role", label: "Get Role" },
+                ]}
+              />
             </FieldGroup>
             <FieldGroup>
               <FieldLabel>Server ID / Invite</FieldLabel>
@@ -828,8 +1087,7 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("serverId", e.target.value)}
               />
             </FieldGroup>
-            {(selectedNode.data.taskType === "message" ||
-              selectedNode.data.taskType === "react") && (
+            {(taskType === "message" || taskType === "react") && (
               <FieldGroup>
                 <FieldLabel>Channel ID</FieldLabel>
                 <StyledInput
@@ -839,12 +1097,12 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
-            {selectedNode.data.taskType === "message" && (
+            {taskType === "message" && (
               <FieldGroup>
                 <FieldLabel>Message</FieldLabel>
                 <StyledTextarea
                   rows={2}
-                  placeholder="Hello!"
+                  placeholder="gm!"
                   value={str(selectedNode.data.message)}
                   onChange={(e) => updateField("message", e.target.value)}
                 />
@@ -852,7 +1110,9 @@ export function NodePropertiesPanel() {
             )}
           </>
         );
+      }
 
+      // ── GALXE ────────────────────────────────────────────────────────────────
       case "galxe":
         return (
           <>
@@ -875,17 +1135,20 @@ export function NodePropertiesPanel() {
             <FieldGroup>
               <FieldLabel>Action</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.action, "complete")}
-                onValueChange={(v) => updateField("action", v)}
-              >
-                <SelectItem value="complete">Complete Tasks</SelectItem>
-                <SelectItem value="claim">Claim OAT</SelectItem>
-                <SelectItem value="check">Check Eligibility</SelectItem>
-              </StyledSelect>
+                onChange={(v) => updateField("action", v)}
+                options={[
+                  { value: "complete", label: "Complete Tasks" },
+                  { value: "claim", label: "Claim OAT" },
+                  { value: "check", label: "Check Eligibility" },
+                ]}
+              />
             </FieldGroup>
           </>
         );
 
+      // ── VOLUME FARMER ────────────────────────────────────────────────────────
       case "volumeFarmer":
         return (
           <>
@@ -921,23 +1184,25 @@ export function NodePropertiesPanel() {
             <FieldGroup>
               <FieldLabel>Chain</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.chain, "arbitrum")}
-                onValueChange={(v) => updateField("chain", v)}
-              >
-                {CHAIN_OPTIONS}
-              </StyledSelect>
+                onChange={(v) => updateField("chain", v)}
+                options={CHAINS}
+              />
             </FieldGroup>
             <FieldGroup>
               <FieldLabel>DEX</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.dex, "uniswap")}
-                onValueChange={(v) => updateField("dex", v)}
-              >
-                <SelectItem value="uniswap">Uniswap</SelectItem>
-                <SelectItem value="jupiter">Jupiter</SelectItem>
-                <SelectItem value="raydium">Raydium</SelectItem>
-                <SelectItem value="pancakeswap">PancakeSwap</SelectItem>
-              </StyledSelect>
+                onChange={(v) => updateField("dex", v)}
+                options={[
+                  { value: "uniswap", label: "Uniswap" },
+                  { value: "jupiter", label: "Jupiter" },
+                  { value: "raydium", label: "Raydium" },
+                  { value: "pancakeswap", label: "PancakeSwap" },
+                ]}
+              />
             </FieldGroup>
             <StyledCheckbox
               id="randomize-vol"
@@ -950,6 +1215,7 @@ export function NodePropertiesPanel() {
           </>
         );
 
+      // ── CLAIM AIRDROP ────────────────────────────────────────────────────────
       case "claimAirdrop":
         return (
           <>
@@ -973,11 +1239,11 @@ export function NodePropertiesPanel() {
             <FieldGroup>
               <FieldLabel>Chain</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.chain, "ethereum")}
-                onValueChange={(v) => updateField("chain", v)}
-              >
-                {CHAIN_OPTIONS}
-              </StyledSelect>
+                onChange={(v) => updateField("chain", v)}
+                options={CHAINS}
+              />
             </FieldGroup>
             <StyledCheckbox
               id="auto-sell"
@@ -988,6 +1254,7 @@ export function NodePropertiesPanel() {
           </>
         );
 
+      // ── WAIT / DELAY ─────────────────────────────────────────────────────────
       case "waitDelay":
         return (
           <>
@@ -1004,14 +1271,16 @@ export function NodePropertiesPanel() {
               <FieldGroup>
                 <FieldLabel>Unit</FieldLabel>
                 <StyledSelect
+                  accent={accent}
                   value={str(selectedNode.data.unit, "seconds")}
-                  onValueChange={(v) => updateField("unit", v)}
-                >
-                  <SelectItem value="seconds">Seconds</SelectItem>
-                  <SelectItem value="minutes">Minutes</SelectItem>
-                  <SelectItem value="hours">Hours</SelectItem>
-                  <SelectItem value="days">Days</SelectItem>
-                </StyledSelect>
+                  onChange={(v) => updateField("unit", v)}
+                  options={[
+                    { value: "seconds", label: "Seconds" },
+                    { value: "minutes", label: "Minutes" },
+                    { value: "hours", label: "Hours" },
+                    { value: "days", label: "Days" },
+                  ]}
+                />
               </FieldGroup>
             </div>
             <StyledCheckbox
@@ -1034,6 +1303,7 @@ export function NodePropertiesPanel() {
           </>
         );
 
+      // ── LOOP ─────────────────────────────────────────────────────────────────
       case "loop":
         return (
           <>
@@ -1041,7 +1311,7 @@ export function NodePropertiesPanel() {
               <FieldLabel>Iterations</FieldLabel>
               <StyledInput
                 type="number"
-                placeholder="leave empty for ∞"
+                placeholder="leave empty for infinite"
                 value={str(selectedNode.data.iterations)}
                 onChange={(e) => updateField("iterations", e.target.value)}
               />
@@ -1064,41 +1334,48 @@ export function NodePropertiesPanel() {
                   onChange={(e) => updateField("loopDelay", e.target.value)}
                 />
                 <StyledSelect
+                  accent={accent}
                   value={str(selectedNode.data.loopDelayUnit, "seconds")}
-                  onValueChange={(v) => updateField("loopDelayUnit", v)}
-                >
-                  <SelectItem value="seconds">Seconds</SelectItem>
-                  <SelectItem value="minutes">Minutes</SelectItem>
-                  <SelectItem value="hours">Hours</SelectItem>
-                </StyledSelect>
+                  onChange={(v) => updateField("loopDelayUnit", v)}
+                  options={[
+                    { value: "seconds", label: "Seconds" },
+                    { value: "minutes", label: "Minutes" },
+                    { value: "hours", label: "Hours" },
+                  ]}
+                />
               </div>
             </FieldGroup>
           </>
         );
 
+      // ── PRICE CHECK ──────────────────────────────────────────────────────────
       case "priceCheck":
         return (
           <>
             <FieldGroup>
               <FieldLabel>Token Symbol</FieldLabel>
               <StyledInput
-                placeholder="ETH"
+                placeholder="ETH, SOL, PEPE..."
                 value={str(selectedNode.data.token)}
-                onChange={(e) => updateField("token", e.target.value)}
+                onChange={(e) =>
+                  updateField("token", e.target.value.toUpperCase())
+                }
               />
             </FieldGroup>
             <FieldGroup>
               <FieldLabel>Price Source</FieldLabel>
               <StyledSelect
+                accent={accent}
                 value={str(selectedNode.data.priceSource, "coingecko")}
-                onValueChange={(v) => updateField("priceSource", v)}
-              >
-                <SelectItem value="coingecko">CoinGecko</SelectItem>
-                <SelectItem value="coinmarketcap">CoinMarketCap</SelectItem>
-                <SelectItem value="dexscreener">DexScreener</SelectItem>
-                <SelectItem value="jupiter">Jupiter (Solana)</SelectItem>
-                <SelectItem value="chainlink">Chainlink Oracle</SelectItem>
-              </StyledSelect>
+                onChange={(v) => updateField("priceSource", v)}
+                options={[
+                  { value: "coingecko", label: "CoinGecko" },
+                  { value: "coinmarketcap", label: "CoinMarketCap" },
+                  { value: "dexscreener", label: "DexScreener" },
+                  { value: "jupiter", label: "Jupiter (Solana)" },
+                  { value: "chainlink", label: "Chainlink Oracle" },
+                ]}
+              />
             </FieldGroup>
             <FieldGroup>
               <FieldLabel>Alert Threshold ($)</FieldLabel>
@@ -1112,51 +1389,83 @@ export function NodePropertiesPanel() {
           </>
         );
 
-      case "gasOptimizer":
+      // ── GAS OPTIMIZER ────────────────────────────────────────────────────────
+      // Solana-native — microlamports, no EVM chains
+      case "gasOptimizer": {
+        const strategy = str(selectedNode.data.strategy, "priority");
         return (
           <>
-            <div className="grid grid-cols-2 gap-2">
-              <FieldGroup>
-                <FieldLabel>Max Gas (gwei)</FieldLabel>
-                <StyledInput
-                  type="number"
-                  placeholder="20"
-                  value={str(selectedNode.data.maxGas)}
-                  onChange={(e) => updateField("maxGas", e.target.value)}
-                />
-              </FieldGroup>
-              <FieldGroup>
-                <FieldLabel>Timeout (min)</FieldLabel>
-                <StyledInput
-                  type="number"
-                  placeholder="60"
-                  value={str(selectedNode.data.timeout)}
-                  onChange={(e) => updateField("timeout", e.target.value)}
-                />
-              </FieldGroup>
-            </div>
             <FieldGroup>
               <FieldLabel>Strategy</FieldLabel>
               <StyledSelect
-                value={str(selectedNode.data.strategy, "wait")}
-                onValueChange={(v) => updateField("strategy", v)}
-              >
-                <SelectItem value="wait">Wait for low gas</SelectItem>
-                <SelectItem value="flashbots">Use Flashbots</SelectItem>
-                <SelectItem value="eip1559">EIP-1559 optimized</SelectItem>
-              </StyledSelect>
+                accent={accent}
+                value={strategy}
+                onChange={(v) => updateField("strategy", v)}
+                options={[
+                  { value: "priority", label: "Priority Fee" },
+                  { value: "jito", label: "Jito Bundle" },
+                  { value: "wait", label: "Wait for Low Fee" },
+                ]}
+              />
             </FieldGroup>
+
+            {/* Urgency — priority + wait */}
+            {(strategy === "priority" || strategy === "wait") && (
+              <FieldGroup>
+                <FieldLabel>Fee Level</FieldLabel>
+                <StyledSelect
+                  accent={accent}
+                  value={str(selectedNode.data.urgency, "medium")}
+                  onChange={(v) => updateField("urgency", v)}
+                  options={[
+                    { value: "low", label: "Low (p25)" },
+                    { value: "medium", label: "Medium (p50)" },
+                    { value: "high", label: "High (p75)" },
+                  ]}
+                />
+              </FieldGroup>
+            )}
+
+            {/* Max fee threshold — wait only */}
+            {strategy === "wait" && (
+              <FieldGroup>
+                <FieldLabel>Max Fee (microlamports)</FieldLabel>
+                <StyledInput
+                  type="number"
+                  placeholder="50000"
+                  value={str(selectedNode.data.maxFee, "50000")}
+                  onChange={(e) => updateField("maxFee", e.target.value)}
+                />
+              </FieldGroup>
+            )}
+
             <FieldGroup>
-              <FieldLabel>Chain</FieldLabel>
-              <StyledSelect
-                value={str(selectedNode.data.chain, "ethereum")}
-                onValueChange={(v) => updateField("chain", v)}
-              >
-                {CHAIN_OPTIONS}
-              </StyledSelect>
+              <FieldLabel>Timeout (minutes)</FieldLabel>
+              <StyledInput
+                type="number"
+                placeholder="60"
+                value={str(selectedNode.data.timeout, "60")}
+                onChange={(e) => updateField("timeout", e.target.value)}
+              />
             </FieldGroup>
+
+            <div
+              className="rounded-lg px-3 py-2"
+              style={{
+                background: "rgba(132,204,22,0.04)",
+                border: "1px solid rgba(132,204,22,0.15)",
+              }}
+            >
+              <div className="text-[8px] font-mono text-slate-500 leading-relaxed">
+                // Solana only · microlamports · live data from{" "}
+                {strategy === "jito"
+                  ? "bundles.jito.wtf + Solana RPC"
+                  : "Solana Mainnet RPC"}
+              </div>
+            </div>
           </>
         );
+      }
 
       default:
         return (
@@ -1169,9 +1478,9 @@ export function NodePropertiesPanel() {
 
   return (
     <div
-      className="absolute top-4 right-4 w-72 z-10 flex flex-col overflow-hidden rounded-xl"
+      className="absolute top-4 right-4 w-72 z-10 flex flex-col rounded-xl"
       style={{
-        background: "rgba(2, 6, 23, 0.93)",
+        background: "rgba(2, 6, 23, 0.95)",
         border: `1px solid ${accent}33`,
         boxShadow: `0 0 0 1px ${accent}11, 0 24px 48px rgba(0,0,0,0.7), 0 0 24px ${accent}15`,
         backdropFilter: "blur(20px)",
@@ -1196,7 +1505,8 @@ export function NodePropertiesPanel() {
         </div>
         <button
           onClick={handleClose}
-          className="shrink-0 w-5 h-5 rounded flex items-center justify-center text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+          className="shrink-0 w-5 h-5 rounded flex items-center justify-center
+            text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
         >
           <X className="w-3 h-3" />
         </button>

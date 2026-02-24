@@ -554,4 +554,725 @@ export const TEMPLATES: FlowTemplate[] = [
       { id: "e7-8", source: "a7", target: "a8", animated: true },
     ],
   },
+
+  // ── 6. SOL Auto-Compounder ───────────────────────────────
+  {
+    id: "sol-compounder",
+    name: "SOL Auto-Compounder",
+    description:
+      "Stake SOL on Jito weekly and automatically restake all rewards to compound your yield. Fully hands-off passive income.",
+    category: "yield",
+    difficulty: "beginner",
+    estimatedGas: "~$0.001 per tx",
+    tags: ["Solana", "Jito", "Staking", "Compound", "Passive"],
+    emoji: "🔁",
+    color: "#10b981",
+    nodes: [
+      {
+        id: "sc1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: {
+          label: "Weekly Sunday",
+          scheduleType: "weekly",
+          scheduleTime: "00:00",
+        },
+      },
+      {
+        id: "sc2",
+        type: "lendStake",
+        position: { x: 300, y: 180 },
+        data: {
+          label: "Stake SOL",
+          actionType: "stake",
+          protocol: "jito",
+          token: "SOL",
+          amount: "10",
+        },
+      },
+      {
+        id: "sc3",
+        type: "waitDelay",
+        position: { x: 300, y: 310 },
+        data: { label: "Wait 7 Days", duration: 7, unit: "days" },
+      },
+      {
+        id: "sc4",
+        type: "lendStake",
+        position: { x: 300, y: 440 },
+        data: {
+          label: "Restake Rewards",
+          actionType: "stake",
+          protocol: "jito",
+          token: "SOL",
+          amount: "auto",
+        },
+      },
+      {
+        id: "sc5",
+        type: "alert",
+        position: { x: 300, y: 570 },
+        data: {
+          label: "Weekly Report",
+          alertType: "telegram",
+          message: "🔁 SOL rewards compounded on Jito!",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "sc1", target: "sc2", animated: true },
+      { id: "e2-3", source: "sc2", target: "sc3", animated: true },
+      { id: "e3-4", source: "sc3", target: "sc4", animated: true },
+      { id: "e4-5", source: "sc4", target: "sc5", animated: true },
+    ],
+  },
+
+  // ── 7. Crash Protection ──────────────────────────────────
+  {
+    id: "crash-protection",
+    name: "Crash Protection",
+    description:
+      "Auto stop-loss: if ETH drops below your price target, immediately exit everything to USDC and fire an urgent Telegram alert.",
+    category: "trading",
+    difficulty: "intermediate",
+    estimatedGas: "~$5-15",
+    tags: ["Stop-loss", "ETH", "Protection", "Price Alert"],
+    emoji: "🛡️",
+    color: "#ef4444",
+    nodes: [
+      {
+        id: "cp1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: {
+          label: "ETH < $2000",
+          scheduleType: "price",
+          token: "ETH",
+          priceCondition: "Below",
+          priceTarget: "2000",
+        },
+      },
+      {
+        id: "cp2",
+        type: "gasOptimizer",
+        position: { x: 300, y: 180 },
+        data: {
+          label: "Fast Execute",
+          maxGas: 50,
+          strategy: "flashbots",
+          chain: "ethereum",
+          timeout: 5,
+        },
+      },
+      {
+        id: "cp3",
+        type: "swap",
+        position: { x: 300, y: 310 },
+        data: {
+          label: "Exit to USDC",
+          fromToken: "ETH",
+          toToken: "USDC",
+          amount: "100%",
+          dex: "uniswap",
+          slippage: 3,
+        },
+      },
+      {
+        id: "cp4",
+        type: "alert",
+        position: { x: 300, y: 440 },
+        data: {
+          label: "🚨 URGENT",
+          alertType: "telegram",
+          message: "🚨 STOP LOSS HIT — Sold all ETH to USDC!",
+          severity: "urgent",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "cp1", target: "cp2", animated: true },
+      { id: "e2-3", source: "cp2", target: "cp3", animated: true },
+      { id: "e3-4", source: "cp3", target: "cp4", animated: true },
+    ],
+  },
+
+  // ── 8. Galxe + Twitter Grind ─────────────────────────────
+  {
+    id: "galxe-twitter-grind",
+    name: "Galxe + Twitter Grind",
+    description:
+      "Complete Galxe campaign tasks and Twitter actions across multiple wallets daily to maximize airdrop points and eligibility.",
+    category: "social",
+    difficulty: "intermediate",
+    estimatedGas: "~$2-5",
+    tags: ["Galxe", "Twitter", "Social", "Multi-wallet", "Points"],
+    emoji: "🎯",
+    color: "#a78bfa",
+    nodes: [
+      {
+        id: "gt1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: {
+          label: "Daily 10AM",
+          scheduleType: "daily",
+          scheduleTime: "10:00",
+        },
+      },
+      {
+        id: "gt2",
+        type: "multiWallet",
+        position: { x: 300, y: 180 },
+        data: {
+          label: "Farm Wallets",
+          wallets: [],
+          executeSequentially: false,
+          delayBetween: 15,
+        },
+      },
+      {
+        id: "gt3",
+        type: "twitter",
+        position: { x: 150, y: 320 },
+        data: {
+          label: "Retweet + Follow",
+          taskType: "retweet",
+          target: "@project",
+        },
+      },
+      {
+        id: "gt4",
+        type: "galxe",
+        position: { x: 450, y: 320 },
+        data: {
+          label: "Galxe Tasks",
+          campaignName: "Campaign",
+          action: "complete",
+        },
+      },
+      {
+        id: "gt5",
+        type: "waitDelay",
+        position: { x: 300, y: 460 },
+        data: {
+          label: "Human Delay",
+          duration: 2,
+          unit: "hours",
+          randomize: true,
+          randomRange: 15,
+        },
+      },
+      {
+        id: "gt6",
+        type: "alert",
+        position: { x: 300, y: 590 },
+        data: {
+          label: "Done",
+          alertType: "telegram",
+          message: "🎯 Social tasks complete for all wallets",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "gt1", target: "gt2", animated: true },
+      { id: "e2-3", source: "gt2", target: "gt3", animated: true },
+      { id: "e2-4", source: "gt2", target: "gt4", animated: true },
+      { id: "e3-5", source: "gt3", target: "gt5", animated: true },
+      { id: "e4-5", source: "gt4", target: "gt5", animated: true },
+      { id: "e5-6", source: "gt5", target: "gt6", animated: true },
+    ],
+  },
+
+  // ── 9. ETH Dip Buyer ─────────────────────────────────────
+  {
+    id: "eth-dip-buyer",
+    name: "ETH Dip Buyer",
+    description:
+      "Watch ETH price and auto-buy when it drops below your target. Gas optimizer ensures best execution with low slippage.",
+    category: "trading",
+    difficulty: "intermediate",
+    estimatedGas: "~$3-8",
+    tags: ["ETH", "Buy the dip", "Price alert", "Uniswap"],
+    emoji: "📉",
+    color: "#3b82f6",
+    nodes: [
+      {
+        id: "eb1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: {
+          label: "ETH < $2800",
+          scheduleType: "price",
+          token: "ETH",
+          priceCondition: "Below",
+          priceTarget: "2800",
+        },
+      },
+      {
+        id: "eb2",
+        type: "gasOptimizer",
+        position: { x: 300, y: 180 },
+        data: {
+          label: "Wait Low Gas",
+          maxGas: 25,
+          strategy: "wait",
+          chain: "ethereum",
+          timeout: 60,
+        },
+      },
+      {
+        id: "eb3",
+        type: "swap",
+        position: { x: 300, y: 310 },
+        data: {
+          label: "Buy ETH",
+          fromToken: "USDC",
+          toToken: "ETH",
+          amount: "200",
+          dex: "uniswap",
+          slippage: 0.5,
+        },
+      },
+      {
+        id: "eb4",
+        type: "alert",
+        position: { x: 300, y: 440 },
+        data: {
+          label: "Bought!",
+          alertType: "telegram",
+          message: "🟢 Bought ETH at dip — $200 USDC swapped!",
+          severity: "success",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "eb1", target: "eb2", animated: true },
+      { id: "e2-3", source: "eb2", target: "eb3", animated: true },
+      { id: "e3-4", source: "eb3", target: "eb4", animated: true },
+    ],
+  },
+
+  // ── 10. Discord Daily Grind ───────────────────────────────
+  {
+    id: "discord-grind",
+    name: "Discord Daily Grind",
+    description:
+      "Join target Discord servers and complete daily interaction tasks across wallets. Randomized delays keep activity looking human.",
+    category: "social",
+    difficulty: "beginner",
+    estimatedGas: "~$0",
+    tags: ["Discord", "Social", "Daily", "Multi-wallet", "Airdrop"],
+    emoji: "💬",
+    color: "#818cf8",
+    nodes: [
+      {
+        id: "dg1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: {
+          label: "Daily 8AM",
+          scheduleType: "daily",
+          scheduleTime: "08:00",
+        },
+      },
+      {
+        id: "dg2",
+        type: "multiWallet",
+        position: { x: 300, y: 180 },
+        data: {
+          label: "Farm Wallets",
+          wallets: [],
+          executeSequentially: true,
+          delayBetween: 30,
+        },
+      },
+      {
+        id: "dg3",
+        type: "discord",
+        position: { x: 300, y: 310 },
+        data: {
+          label: "Post GM",
+          taskType: "message",
+          serverId: "",
+          channelId: "",
+          message: "gm! 🌅",
+        },
+      },
+      {
+        id: "dg4",
+        type: "waitDelay",
+        position: { x: 300, y: 440 },
+        data: {
+          label: "Human Delay",
+          duration: 30,
+          unit: "seconds",
+          randomize: true,
+          randomRange: 50,
+        },
+      },
+      {
+        id: "dg5",
+        type: "discord",
+        position: { x: 300, y: 570 },
+        data: {
+          label: "React to Post",
+          taskType: "react",
+          serverId: "",
+          channelId: "",
+        },
+      },
+      {
+        id: "dg6",
+        type: "alert",
+        position: { x: 300, y: 700 },
+        data: {
+          label: "Done",
+          alertType: "telegram",
+          message: "💬 Discord grind complete for today!",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "dg1", target: "dg2", animated: true },
+      { id: "e2-3", source: "dg2", target: "dg3", animated: true },
+      { id: "e3-4", source: "dg3", target: "dg4", animated: true },
+      { id: "e4-5", source: "dg4", target: "dg5", animated: true },
+      { id: "e5-6", source: "dg5", target: "dg6", animated: true },
+    ],
+  },
+
+  // ── 11. Wallet Inflow Alert ───────────────────────────────
+  {
+    id: "wallet-inflow",
+    name: "Wallet Inflow Alert",
+    description:
+      "Watch your wallet for incoming transactions above a minimum amount and get instant Telegram notifications.",
+    category: "trading",
+    difficulty: "beginner",
+    estimatedGas: "~$0",
+    tags: ["Wallet", "Alert", "Monitoring", "Telegram", "Passive"],
+    emoji: "📥",
+    color: "#22d3ee",
+    nodes: [
+      {
+        id: "wi1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: {
+          label: "On Incoming TX",
+          scheduleType: "wallet",
+          walletEvent: "Incoming TX",
+          minAmount: "10",
+        },
+      },
+      {
+        id: "wi2",
+        type: "alert",
+        position: { x: 300, y: 200 },
+        data: {
+          label: "Telegram Alert",
+          alertType: "telegram",
+          message: "📥 New incoming transaction on your wallet!",
+          severity: "info",
+        },
+      },
+    ],
+    edges: [{ id: "e1-2", source: "wi1", target: "wi2", animated: true }],
+  },
+
+  // ── 12. Arb Opportunity Watcher ──────────────────────────
+  {
+    id: "arb-watcher",
+    name: "Arb Opportunity Watcher",
+    description:
+      "Monitor token prices across two chains every hour. If spread exceeds threshold, fire an urgent Telegram alert to act fast.",
+    category: "trading",
+    difficulty: "advanced",
+    estimatedGas: "~$0",
+    tags: ["Arbitrage", "Price check", "Multi-chain", "Alert"],
+    emoji: "⚡",
+    color: "#f97316",
+    nodes: [
+      {
+        id: "aw1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: { label: "Hourly", scheduleType: "interval", intervalHours: 1 },
+      },
+      {
+        id: "aw2",
+        type: "priceCheck",
+        position: { x: 150, y: 180 },
+        data: { label: "ETH Mainnet", token: "ETH", priceSource: "chainlink" },
+      },
+      {
+        id: "aw3",
+        type: "priceCheck",
+        position: { x: 450, y: 180 },
+        data: {
+          label: "ETH Arbitrum",
+          token: "ETH",
+          priceSource: "dexscreener",
+        },
+      },
+      {
+        id: "aw4",
+        type: "condition",
+        position: { x: 300, y: 320 },
+        data: {
+          label: "Spread > 0.5%?",
+          conditionType: "custom",
+          expression: "abs(price1 - price2) / price1 > 0.005",
+        },
+      },
+      {
+        id: "aw5",
+        type: "alert",
+        position: { x: 300, y: 450 },
+        data: {
+          label: "🚨 Arb Alert",
+          alertType: "telegram",
+          message: "🚨 ARB OPPORTUNITY — act fast!",
+          severity: "urgent",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "aw1", target: "aw2", animated: true },
+      { id: "e1-3", source: "aw1", target: "aw3", animated: true },
+      { id: "e2-4", source: "aw2", target: "aw4", animated: true },
+      { id: "e3-4", source: "aw3", target: "aw4", animated: true },
+      { id: "e4-5", source: "aw4", target: "aw5", animated: true },
+    ],
+  },
+
+  // ── 13. Bridge & Swap ─────────────────────────────────────
+  {
+    id: "eth-arb-bridge-swap",
+    name: "ETH → Arbitrum + Swap",
+    description:
+      "Bridge USDC from Ethereum to Arbitrum via Stargate, wait for confirmation, then swap into ETH on Arbitrum.",
+    category: "farming",
+    difficulty: "intermediate",
+    estimatedGas: "~$8-20",
+    tags: ["Bridge", "Arbitrum", "Stargate", "USDC", "L2"],
+    emoji: "🌉",
+    color: "#06b6d4",
+    nodes: [
+      {
+        id: "cb1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: { label: "Manual", scheduleType: "manual" },
+      },
+      {
+        id: "cb2",
+        type: "bridge",
+        position: { x: 300, y: 180 },
+        data: {
+          label: "Bridge USDC",
+          fromChain: "ethereum",
+          toChain: "arbitrum",
+          bridgeProtocol: "stargate",
+          token: "USDC",
+          amount: "500",
+        },
+      },
+      {
+        id: "cb3",
+        type: "waitDelay",
+        position: { x: 300, y: 310 },
+        data: { label: "Wait Bridge", duration: 3, unit: "minutes" },
+      },
+      {
+        id: "cb4",
+        type: "swap",
+        position: { x: 300, y: 440 },
+        data: {
+          label: "Buy ETH on Arb",
+          fromToken: "USDC",
+          toToken: "ETH",
+          amount: "500",
+          dex: "uniswap",
+          slippage: 0.5,
+        },
+      },
+      {
+        id: "cb5",
+        type: "alert",
+        position: { x: 300, y: 570 },
+        data: {
+          label: "Done",
+          alertType: "telegram",
+          message: "🌉 Bridge complete — ETH bought on Arbitrum!",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "cb1", target: "cb2", animated: true },
+      { id: "e2-3", source: "cb2", target: "cb3", animated: true },
+      { id: "e3-4", source: "cb3", target: "cb4", animated: true },
+      { id: "e4-5", source: "cb4", target: "cb5", animated: true },
+    ],
+  },
+
+  // ── 14. Airdrop Claim & Sell ──────────────────────────────
+  {
+    id: "airdrop-claim-sell",
+    name: "Airdrop Claim & Sell",
+    description:
+      "Auto-claim an airdrop when eligible, immediately swap the token to USDC, and get a Telegram notification.",
+    category: "airdrop",
+    difficulty: "intermediate",
+    estimatedGas: "~$5-15",
+    tags: ["Airdrop", "Claim", "Sell", "USDC", "Auto"],
+    emoji: "🎁",
+    color: "#f43f5e",
+    nodes: [
+      {
+        id: "acs1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: {
+          label: "Daily Check",
+          scheduleType: "daily",
+          scheduleTime: "12:00",
+        },
+      },
+      {
+        id: "acs2",
+        type: "claimAirdrop",
+        position: { x: 300, y: 180 },
+        data: {
+          label: "Claim Drop",
+          projectName: "Project",
+          contractAddress: "",
+          chain: "ethereum",
+          autoSell: false,
+        },
+      },
+      {
+        id: "acs3",
+        type: "condition",
+        position: { x: 300, y: 310 },
+        data: {
+          label: "Claimed?",
+          conditionType: "balance",
+          operator: ">",
+          value: "0",
+        },
+      },
+      {
+        id: "acs4",
+        type: "swap",
+        position: { x: 300, y: 440 },
+        data: {
+          label: "Sell Token",
+          fromToken: "TOKEN",
+          toToken: "USDC",
+          amount: "100%",
+          dex: "uniswap",
+          slippage: 2,
+        },
+      },
+      {
+        id: "acs5",
+        type: "alert",
+        position: { x: 300, y: 570 },
+        data: {
+          label: "Notify",
+          alertType: "telegram",
+          message: "🪂 Airdrop claimed and sold for USDC!",
+          severity: "success",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "acs1", target: "acs2", animated: true },
+      { id: "e2-3", source: "acs2", target: "acs3", animated: true },
+      { id: "e3-4", source: "acs3", target: "acs4", animated: true },
+      { id: "e4-5", source: "acs4", target: "acs5", animated: true },
+    ],
+  },
+
+  // ── 15. Weekly Portfolio Rebalancer ──────────────────────
+  {
+    id: "portfolio-rebalancer",
+    name: "Weekly Rebalancer",
+    description:
+      "Every Sunday rebalance your portfolio: sell half ETH into USDC, bridge a portion to Arbitrum, and stake the rest on Lido.",
+    category: "yield",
+    difficulty: "advanced",
+    estimatedGas: "~$20-40",
+    tags: ["Rebalance", "Portfolio", "ETH", "Lido", "Weekly"],
+    emoji: "⚖️",
+    color: "#e879f9",
+    nodes: [
+      {
+        id: "pr1",
+        type: "trigger",
+        position: { x: 300, y: 50 },
+        data: {
+          label: "Weekly Sunday",
+          scheduleType: "weekly",
+          scheduleTime: "00:00",
+        },
+      },
+      {
+        id: "pr2",
+        type: "swap",
+        position: { x: 300, y: 180 },
+        data: {
+          label: "ETH → USDC 50%",
+          fromToken: "ETH",
+          toToken: "USDC",
+          amount: "50%",
+          dex: "uniswap",
+          slippage: 0.5,
+        },
+      },
+      {
+        id: "pr3",
+        type: "bridge",
+        position: { x: 150, y: 330 },
+        data: {
+          label: "Bridge to Arb",
+          fromChain: "ethereum",
+          toChain: "arbitrum",
+          bridgeProtocol: "stargate",
+          token: "USDC",
+          amount: "50%",
+        },
+      },
+      {
+        id: "pr4",
+        type: "lendStake",
+        position: { x: 450, y: 330 },
+        data: {
+          label: "Stake ETH",
+          actionType: "stake",
+          protocol: "lido",
+          token: "ETH",
+          amount: "50%",
+        },
+      },
+      {
+        id: "pr5",
+        type: "alert",
+        position: { x: 300, y: 480 },
+        data: {
+          label: "Weekly Report",
+          alertType: "telegram",
+          message: "⚖️ Weekly rebalance complete!",
+        },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "pr1", target: "pr2", animated: true },
+      { id: "e2-3", source: "pr2", target: "pr3", animated: true },
+      { id: "e2-4", source: "pr2", target: "pr4", animated: true },
+      { id: "e3-5", source: "pr3", target: "pr5", animated: true },
+      { id: "e4-5", source: "pr4", target: "pr5", animated: true },
+    ],
+  },
 ];

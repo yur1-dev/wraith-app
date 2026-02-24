@@ -6,7 +6,6 @@ import {
   TEMPLATES,
   CATEGORIES,
   DIFFICULTY_STYLES,
-  NODE_EMOJIS,
   type FlowTemplate,
   type Category,
 } from "@/lib/template";
@@ -17,6 +16,27 @@ interface TemplatesGalleryProps {
   open: boolean;
   onClose: () => void;
 }
+
+const NODE_TYPE_COLORS: Record<string, string> = {
+  trigger: "#a855f7",
+  multiWallet: "#f97316",
+  swap: "#3b82f6",
+  bridge: "#06b6d4",
+  chainSwitch: "#8b5cf6",
+  alert: "#f59e0b",
+  condition: "#eab308",
+  walletConnect: "#10b981",
+  lendStake: "#10b981",
+  twitter: "#38bdf8",
+  discord: "#818cf8",
+  galxe: "#a78bfa",
+  volumeFarmer: "#f59e0b",
+  claimAirdrop: "#f43f5e",
+  waitDelay: "#94a3b8",
+  loop: "#e879f9",
+  priceCheck: "#2dd4bf",
+  gasOptimizer: "#84cc16",
+};
 
 export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
   const { setNodes, setEdges } = useFlowStore();
@@ -148,8 +168,7 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                   transition: "all 0.15s",
                 }}
               >
-                <span>{cat.emoji}</span>
-                <span>{cat.label}</span>
+                {cat.label}
               </button>
             ))}
           </div>
@@ -189,7 +208,7 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
 
                   <div className="p-4">
                     <div className="flex items-start gap-3">
-                      {/* Emoji icon */}
+                      {/* Color icon box — category initial instead of emoji */}
                       <div
                         style={{
                           width: 40,
@@ -198,13 +217,23 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          fontSize: 20,
                           flexShrink: 0,
                           background: `${template.color}15`,
-                          border: `1px solid ${template.color}25`,
+                          border: `1px solid ${template.color}30`,
                         }}
                       >
-                        {template.emoji}
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontFamily: "monospace",
+                            fontWeight: 700,
+                            letterSpacing: "0.05em",
+                            color: template.color,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {template.category.slice(0, 3)}
+                        </span>
                       </div>
 
                       {/* Info */}
@@ -244,13 +273,7 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                         </p>
 
                         {/* Stats */}
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 12,
-                            marginTop: 8,
-                          }}
-                        >
+                        <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
                           <div
                             style={{
                               display: "flex",
@@ -321,7 +344,7 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                       />
                     </div>
 
-                    {/* Load button - only when active */}
+                    {/* Load button — only when active */}
                     {isActive && (
                       <button
                         onClick={(e) => {
@@ -351,7 +374,7 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                         }}
                       >
                         {isLoaded ? (
-                          "✅ Loaded! Opening canvas..."
+                          "Loaded — opening canvas..."
                         ) : (
                           <>
                             <Zap size={12} />
@@ -387,25 +410,27 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                 flexShrink: 0,
               }}
             >
+              {/* Accent line for this template */}
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 4,
+                  height: 2,
+                  borderRadius: 1,
+                  background: preview.color,
+                  marginBottom: 12,
+                  opacity: 0.7,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "white",
+                  display: "block",
+                  marginBottom: 6,
                 }}
               >
-                <span style={{ fontSize: 22 }}>{preview.emoji}</span>
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: "white",
-                  }}
-                >
-                  {preview.name}
-                </span>
-              </div>
+                {preview.name}
+              </span>
               <p
                 style={{
                   fontSize: 10,
@@ -418,13 +443,7 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
             </div>
 
             {/* Node flow */}
-            <div
-              style={{
-                flex: 1,
-                overflowY: "auto",
-                padding: "16px",
-              }}
-            >
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
               <p
                 style={{
                   fontSize: 9,
@@ -454,55 +473,70 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 8 }}
                 >
-                  {preview.nodes.map((node: Node, i: number) => (
-                    <div
-                      key={node.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
+                  {preview.nodes.map((node: Node) => {
+                    const nodeColor =
+                      NODE_TYPE_COLORS[node.type ?? ""] ?? preview.color;
+                    return (
                       <div
+                        key={node.id}
                         style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: "50%",
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 13,
-                          flexShrink: 0,
-                          zIndex: 1,
-                          background: `${preview.color}15`,
-                          border: `1px solid ${preview.color}30`,
+                          gap: 12,
                         }}
                       >
-                        {NODE_EMOJIS[node.type ?? ""] ?? "⚙️"}
-                      </div>
-                      <div>
-                        <p
+                        {/* Type badge circle instead of emoji */}
+                        <div
                           style={{
-                            fontSize: 11,
-                            color: "rgba(203,213,225,0.9)",
-                            fontWeight: 500,
+                            width: 30,
+                            height: 30,
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            zIndex: 1,
+                            background: `${nodeColor}15`,
+                            border: `1px solid ${nodeColor}40`,
                           }}
                         >
-                          {String(node.data?.label ?? node.type ?? "Node")}
-                        </p>
-                        <p
-                          style={{
-                            fontSize: 9,
-                            color: "rgba(100,116,139,0.6)",
-                            fontFamily: "monospace",
-                            textTransform: "capitalize",
-                          }}
-                        >
-                          {node.type}
-                        </p>
+                          <span
+                            style={{
+                              fontSize: 7,
+                              fontFamily: "monospace",
+                              fontWeight: 700,
+                              color: nodeColor,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.03em",
+                            }}
+                          >
+                            {(node.type ?? "node").slice(0, 3)}
+                          </span>
+                        </div>
+                        <div>
+                          <p
+                            style={{
+                              fontSize: 11,
+                              color: "rgba(203,213,225,0.9)",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {String(node.data?.label ?? node.type ?? "Node")}
+                          </p>
+                          <p
+                            style={{
+                              fontSize: 9,
+                              color: "rgba(100,116,139,0.6)",
+                              fontFamily: "monospace",
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {node.type}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -538,7 +572,7 @@ export function TemplatesGallery({ open, onClose }: TemplatesGalleryProps) {
                 }}
               >
                 {justLoaded === preview.id ? (
-                  "✅ Loading..."
+                  "Loading..."
                 ) : (
                   <>
                     <Zap size={13} />
