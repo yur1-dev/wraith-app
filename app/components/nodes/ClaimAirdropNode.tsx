@@ -15,12 +15,9 @@ import {
   Zap,
   TrendingUp,
   Star,
-  ChevronRight,
   XCircle,
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface LiveAirdrop {
   id: string;
@@ -59,8 +56,6 @@ interface CheckResult {
   daylightError?: string;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
 const PRESET_COLORS = [
   "#a855f7",
   "#f97316",
@@ -87,8 +82,6 @@ const STATUS_CONFIG = {
 
 const VALUE_DOTS: Record<string, number> = { $: 1, $$: 2, $$$: 3, $$$$: 4 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function isValidEVMAddress(addr: string) {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
@@ -96,8 +89,6 @@ function isValidEVMAddress(addr: string) {
 function shortenAddress(addr: string) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
-
-// ── Sub-components ────────────────────────────────────────────────────────────
 
 function ValueDots({ value, accent }: { value: string; accent: string }) {
   const filled = VALUE_DOTS[value] ?? 0;
@@ -122,7 +113,6 @@ function AirdropCard({
   accent: string;
 }) {
   const status = STATUS_CONFIG[airdrop.status];
-
   return (
     <div
       className="rounded-lg px-2.5 py-2 space-y-1.5 transition-all"
@@ -161,11 +151,9 @@ function AirdropCard({
           </div>
         </div>
       </div>
-
       <p className="text-[8px] font-mono text-slate-500 leading-relaxed line-clamp-2">
         {airdrop.description}
       </p>
-
       <div className="flex items-center justify-between">
         <div className="flex gap-1 flex-wrap">
           {airdrop.eligibility.slice(0, 2).map((e, i) => (
@@ -207,7 +195,6 @@ function LiveClaimCard({
 }) {
   const sourceColor = airdrop.source === "merkl" ? "#60a5fa" : "#a78bfa";
   const sourceLabel = airdrop.source === "merkl" ? "MERKL" : "DAYLIGHT";
-
   return (
     <div
       className="rounded-lg px-2.5 py-2 space-y-1"
@@ -265,8 +252,6 @@ function LiveClaimCard({
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
-
 export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
@@ -274,27 +259,37 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
   const autoRefresh = data.autoRefresh !== false;
   const customColor = data.customColor as string | undefined;
   const accent = customColor ?? "#f43f5e";
-  const activeTab = (data.activeTab as string) ?? "live"; // "live" | "upcoming"
+  const activeTab = (data.activeTab as string) ?? "live";
 
-  const [tab, setTab] = useState<"config" | "color">("config");
   const [showPopover, setShowPopover] = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [addressInput, setAddressInput] = useState(walletAddress);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const addressRef = useRef(walletAddress);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     addressRef.current = walletAddress;
   }, [walletAddress]);
 
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleMouseDown, true);
+    return () => window.removeEventListener("mousedown", handleMouseDown, true);
+  }, []);
+
   const update = (field: string, val: unknown) =>
     updateNodeData(id, { [field]: val });
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchUpcoming = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -319,7 +314,6 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
     async (addr?: string) => {
       const target = addr ?? addressRef.current;
       if (!target || !isValidEVMAddress(target)) {
-        // No address — just load upcoming
         await fetchUpcoming();
         return;
       }
@@ -343,7 +337,6 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
     [fetchUpcoming],
   );
 
-  // On mount + interval
   useEffect(() => {
     checkAddress();
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -354,13 +347,6 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
     };
   }, [autoRefresh, checkAddress]);
 
-  useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
-  }, []);
-
-  // ── Derived state ──────────────────────────────────────────────────────────
   const hasAddress = isValidEVMAddress(walletAddress);
   const liveCount = result?.liveAirdrops?.length ?? 0;
   const upcomingCount = result?.upcoming?.length ?? 0;
@@ -373,7 +359,6 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
       : hasAddress
         ? "#60a5fa"
         : "#94a3b8";
-
   const statusLabel = error
     ? "error"
     : loading
@@ -384,7 +369,6 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
           ? "no claims found"
           : "enter wallet";
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
       className="relative min-w-[290px] max-w-[290px] rounded-xl transition-all duration-200"
@@ -399,7 +383,7 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
         backdropFilter: "blur(20px)",
       }}
     >
-      {/* ── Header ── */}
+      {/* Header */}
       <div
         className="px-3 py-2.5 rounded-t-xl flex items-center justify-between select-none"
         style={{
@@ -427,7 +411,6 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          {/* Live count badge */}
           {hasLive && (
             <div
               className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold"
@@ -437,6 +420,7 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
             </div>
           )}
           <button
+            ref={buttonRef}
             onClick={(e) => {
               e.stopPropagation();
               setShowPopover((p) => !p);
@@ -459,9 +443,8 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
         }}
       />
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="px-3 py-3 space-y-2 select-none">
-        {/* Error */}
         {error && (
           <div
             className="rounded-lg px-3 py-1.5 flex items-center gap-2"
@@ -477,7 +460,6 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         )}
 
-        {/* Wallet address display */}
         {hasAddress && (
           <div
             className="rounded-lg px-2.5 py-1.5 flex items-center gap-2"
@@ -496,7 +478,7 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         )}
 
-        {/* ── View tabs ── */}
+        {/* View tabs */}
         <div
           className="flex rounded-lg overflow-hidden"
           style={{ border: `1px solid ${accent}15` }}
@@ -546,7 +528,7 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
           ))}
         </div>
 
-        {/* ── Content area ── */}
+        {/* Content area */}
         <div className="space-y-1.5 max-h-[260px] overflow-y-auto scrollbar-thin">
           {loading && !result ? (
             <div className="flex items-center justify-center py-8">
@@ -607,7 +589,6 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
               )}
             </>
           ) : (
-            /* Upcoming tab */
             (result?.upcoming?.map((a) => (
               <AirdropCard key={a.id} airdrop={a} accent={accent} />
             )) ?? (
@@ -621,7 +602,7 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
           )}
         </div>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="flex items-center justify-between pt-0.5">
           <div className="flex items-center gap-1.5">
             {loading ? (
@@ -673,232 +654,89 @@ export const ClaimAirdropNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
-      {/* ── Popover ── */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}30`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}12`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
+            className="h-px w-full"
+            style={{
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
+            }}
           />
           <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-64 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}30`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}12`,
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="px-2 py-1.5 border-b"
+            style={{ borderColor: `${accent}15` }}
           >
-            <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-
-            {/* Tabs */}
-            <div
-              className="flex border-b"
-              style={{ borderColor: `${accent}15` }}
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
             >
-              {(["config", "color"] as const).map((t) => (
+              Node Color
+            </span>
+          </div>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-10 h-10 rounded border-2 cursor-pointer"
+                style={{ borderColor: `${accent}66`, backgroundColor: accent }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-2 text-[9px] font-mono font-bold uppercase tracking-widest cursor-pointer transition-all"
-                  style={
-                    tab === t
-                      ? { color: accent, borderBottom: `1px solid ${accent}` }
-                      : { color: "rgba(100,116,139,0.6)" }
-                  }
-                >
-                  {t}
-                </button>
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
               ))}
             </div>
-
-            <div className="p-3 space-y-3">
-              {tab === "config" && (
-                <>
-                  {/* Wallet Address */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Wallet Address (EVM)
-                    </div>
-                    <input
-                      type="text"
-                      value={addressInput}
-                      onChange={(e) => setAddressInput(e.target.value)}
-                      placeholder="0x..."
-                      className="w-full h-7 px-2 rounded-md text-[9px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: `1px solid ${
-                          addressInput && !isValidEVMAddress(addressInput)
-                            ? "rgba(248,113,113,0.5)"
-                            : "rgba(51,65,85,0.8)"
-                        }`,
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = accent)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                      }
-                    />
-                    {addressInput && !isValidEVMAddress(addressInput) && (
-                      <p className="text-[7px] font-mono text-red-400">
-                        Must be 0x + 40 hex chars
-                      </p>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (!isValidEVMAddress(addressInput)) return;
-                        update("walletAddress", addressInput);
-                        addressRef.current = addressInput;
-                        checkAddress(addressInput);
-                        setShowPopover(false);
-                      }}
-                      disabled={!isValidEVMAddress(addressInput)}
-                      className="w-full h-7 rounded-lg flex items-center justify-center gap-1.5 text-[8px] font-mono font-bold uppercase tracking-widest cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{
-                        background: `${accent}15`,
-                        border: `1px solid ${accent}30`,
-                        color: accent,
-                      }}
-                    >
-                      <Search className="w-2.5 h-2.5" /> Scan Wallet
-                    </button>
-                  </div>
-
-                  <div className="h-px" style={{ background: `${accent}15` }} />
-
-                  {/* Auto-refresh */}
-                  <div className="flex items-center justify-between">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Auto-refresh (2 min)
-                    </div>
-                    <button
-                      onClick={() => update("autoRefresh", !autoRefresh)}
-                      className="w-8 h-4 rounded-full relative transition-all cursor-pointer"
-                      style={{
-                        background: autoRefresh
-                          ? `${accent}44`
-                          : "rgba(51,65,85,0.6)",
-                        border: `1px solid ${autoRefresh ? accent : "rgba(51,65,85,0.8)"}`,
-                      }}
-                    >
-                      <span
-                        className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
-                        style={{
-                          background: autoRefresh ? accent : "#475569",
-                          left: autoRefresh ? "calc(100% - 14px)" : "1px",
-                        }}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Manual scan button */}
-                  <button
-                    onClick={() => {
-                      checkAddress();
-                      setShowPopover(false);
-                    }}
-                    className="w-full h-7 rounded-lg flex items-center justify-center gap-1.5 text-[8px] font-mono font-bold uppercase tracking-widest cursor-pointer"
-                    style={{
-                      background: `${accent}15`,
-                      border: `1px solid ${accent}30`,
-                      color: accent,
-                    }}
-                  >
-                    <RefreshCw className="w-2.5 h-2.5" /> Refresh Now
-                  </button>
-
-                  {/* Info */}
-                  <div
-                    className="rounded-lg p-2 text-[7px] font-mono text-slate-600 leading-relaxed"
-                    style={{
-                      background: "rgba(15,23,42,0.8)",
-                      border: "1px solid rgba(51,65,85,0.3)",
-                    }}
-                  >
-                    <div
-                      className="flex items-center gap-1 mb-1"
-                      style={{ color: accent }}
-                    >
-                      <Star className="w-2.5 h-2.5" />
-                      <span className="font-bold uppercase">
-                        Powered by Daylight API
-                      </span>
-                    </div>
-                    Live claims from the same API used by MetaMask, Zerion &
-                    Coinbase Wallet. Upcoming list curated from top 2025 airdrop
-                    opportunities.
-                  </div>
-                </>
-              )}
-
-              {tab === "color" && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(e) => update("customColor", e.target.value)}
-                      className="w-10 h-10 rounded border-2 cursor-pointer"
-                      style={{
-                        borderColor: `${accent}66`,
-                        backgroundColor: accent,
-                      }}
-                    />
-                    <input
-                      type="text"
-                      value={accent.toUpperCase()}
-                      onChange={(e) => {
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                          update("customColor", e.target.value);
-                      }}
-                      className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      maxLength={7}
-                    />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {PRESET_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => update("customColor", c)}
-                        className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                        style={{
-                          backgroundColor: c,
-                          borderColor:
-                            accent === c ? "white" : "rgba(51,65,85,0.5)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {customColor && (
-                    <button
-                      onClick={() => update("customColor", undefined)}
-                      className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                      style={{
-                        color: "rgba(148,163,184,0.6)",
-                        borderColor: "rgba(51,65,85,0.5)",
-                      }}
-                    >
-                      Reset to Default
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset to Default
+              </button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
-      {/* ── Handles ── */}
       <Handle
         type="target"
         position={Position.Left}

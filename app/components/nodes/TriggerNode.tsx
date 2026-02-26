@@ -8,8 +8,6 @@ import {
   Zap,
   TrendingUp,
   Wallet,
-  Timer,
-  ChevronDown,
   Activity,
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
@@ -44,9 +42,7 @@ const TRIGGER_TYPES = {
 type TriggerType = keyof typeof TRIGGER_TYPES;
 
 const SCHEDULE_PRESETS = ["Hourly", "Every 6h", "Daily", "Weekly", "Custom"];
-
 const PRICE_CONDITIONS = ["Above", "Below", "Crosses Up", "Crosses Down"];
-
 const WALLET_EVENTS = [
   "Incoming TX",
   "Outgoing TX",
@@ -67,33 +63,124 @@ const PRESET_COLORS = [
   "#84cc16",
 ];
 
+// ── Time Picker — simple two-box input ───────────────────────────────────────
+function TimePickerInput({
+  value,
+  onChange,
+  accent,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  accent: string;
+}) {
+  const parts = value.split(":");
+  const hours = Math.min(23, Math.max(0, parseInt(parts[0] ?? "0", 10) || 0));
+  const minutes = Math.min(59, Math.max(0, parseInt(parts[1] ?? "0", 10) || 0));
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  const inputStyle: React.CSSProperties = {
+    width: 48,
+    height: 34,
+    background: "rgba(2,6,23,0.9)",
+    border: "1px solid rgba(51,65,85,0.8)",
+    borderRadius: 6,
+    color: accent,
+    fontSize: 15,
+    fontFamily: "monospace",
+    fontWeight: 700,
+    textAlign: "center",
+    outline: "none",
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-[7px] font-mono text-slate-600 uppercase tracking-widest">
+          hr
+        </span>
+        <input
+          type="number"
+          min={0}
+          max={23}
+          value={pad(hours)}
+          onChange={(e) => {
+            const v = Math.min(
+              23,
+              Math.max(0, parseInt(e.target.value, 10) || 0),
+            );
+            onChange(`${pad(v)}:${pad(minutes)}`);
+          }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = `${accent}66`)}
+          onBlur={(e) =>
+            (e.currentTarget.style.borderColor = "rgba(51,65,85,0.8)")
+          }
+          style={inputStyle}
+        />
+      </div>
+      <span className="text-slate-500 font-mono font-bold text-base mt-3">
+        :
+      </span>
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-[7px] font-mono text-slate-600 uppercase tracking-widest">
+          min
+        </span>
+        <input
+          type="number"
+          min={0}
+          max={59}
+          step={5}
+          value={pad(minutes)}
+          onChange={(e) => {
+            const v = Math.min(
+              59,
+              Math.max(0, parseInt(e.target.value, 10) || 0),
+            );
+            onChange(`${pad(hours)}:${pad(v)}`);
+          }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = `${accent}66`)}
+          onBlur={(e) =>
+            (e.currentTarget.style.borderColor = "rgba(51,65,85,0.8)")
+          }
+          style={inputStyle}
+        />
+      </div>
+      <span
+        className="mt-3 text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded"
+        style={{
+          color: `${accent}80`,
+          background: `${accent}12`,
+          border: `1px solid ${accent}20`,
+        }}
+      >
+        UTC
+      </span>
+    </div>
+  );
+}
+
 export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
   const triggerType = (data.triggerType as TriggerType) ?? "schedule";
   const customColor = data.customColor as string | undefined;
-
   const triggerCfg = TRIGGER_TYPES[triggerType] ?? TRIGGER_TYPES.schedule;
   const accent = customColor || triggerCfg.color;
   const TriggerIcon = triggerCfg.icon;
 
-  // Schedule fields
   const schedulePreset = String(data.schedulePreset ?? "Daily");
   const scheduleTime = String(data.scheduleTime ?? "03:00");
   const cronExpression = data.cronExpression as string | undefined;
 
-  // Price fields
   const token = String(data.token ?? "SOL");
   const priceCondition = String(data.priceCondition ?? "Above");
   const priceTarget = String(data.priceTarget ?? "");
 
-  // Wallet fields
   const walletEvent = String(data.walletEvent ?? "Incoming TX");
   const minAmount = String(data.minAmount ?? "");
 
   const [showMenu, setShowMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<"color" | "type">("type");
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const close = () => setShowMenu(false);
@@ -104,15 +191,32 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
   useEffect(() => {
     if (!showMenu) return;
     const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Element)) {
+      const target = e.target as Element;
+      if (
+        !menuRef.current?.contains(target) &&
+        !buttonRef.current?.contains(target)
+      ) {
         setShowMenu(false);
       }
     };
-    document.addEventListener("mousedown", handleClick, true);
-    return () => document.removeEventListener("mousedown", handleClick, true);
+    window.addEventListener("mousedown", handleClick, true);
+    return () => window.removeEventListener("mousedown", handleClick, true);
   }, [showMenu]);
 
   const update = (patch: Record<string, unknown>) => updateNodeData(id, patch);
+
+  const chipStyle = (active: boolean) =>
+    active
+      ? {
+          background: `${accent}22`,
+          color: accent,
+          border: `1px solid ${accent}66`,
+        }
+      : {
+          background: "rgba(255,255,255,0.03)",
+          color: "rgba(148,163,184,0.5)",
+          border: "1px solid rgba(51,65,85,0.8)",
+        };
 
   const renderBody = () => {
     switch (triggerType) {
@@ -129,19 +233,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
                     key={p}
                     onClick={() => update({ schedulePreset: p })}
                     className="px-2 py-1 rounded-md text-[8px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all"
-                    style={
-                      schedulePreset === p
-                        ? {
-                            background: `${accent}22`,
-                            color: accent,
-                            border: `1px solid ${accent}66`,
-                          }
-                        : {
-                            background: "rgba(255,255,255,0.03)",
-                            color: "rgba(148,163,184,0.5)",
-                            border: "1px solid rgba(51,65,85,0.8)",
-                          }
-                    }
+                    style={chipStyle(schedulePreset === p)}
                   >
                     {p}
                   </button>
@@ -150,16 +242,13 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
             </div>
             {(schedulePreset === "Daily" || schedulePreset === "Weekly") && (
               <div>
-                <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1">
+                <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
                   Time (UTC)
                 </div>
-                <input
-                  type="time"
+                <TimePickerInput
                   value={scheduleTime}
-                  onChange={(e) => update({ scheduleTime: e.target.value })}
-                  className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                    text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
-                  style={{ colorScheme: "dark" }}
+                  onChange={(v) => update({ scheduleTime: v })}
+                  accent={accent}
                 />
               </div>
             )}
@@ -173,8 +262,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
                   placeholder="0 */6 * * *"
                   value={cronExpression ?? ""}
                   onChange={(e) => update({ cronExpression: e.target.value })}
-                  className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                    text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none placeholder:text-slate-600"
+                  className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none placeholder:text-slate-600"
                 />
               </div>
             )}
@@ -195,8 +283,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
                 onChange={(e) =>
                   update({ token: e.target.value.toUpperCase() })
                 }
-                className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                  text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none placeholder:text-slate-600"
+                className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none placeholder:text-slate-600"
               />
             </div>
             <div>
@@ -209,19 +296,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
                     key={c}
                     onClick={() => update({ priceCondition: c })}
                     className="px-2 py-1 rounded-md text-[8px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all"
-                    style={
-                      priceCondition === c
-                        ? {
-                            background: `${accent}22`,
-                            color: accent,
-                            border: `1px solid ${accent}66`,
-                          }
-                        : {
-                            background: "rgba(255,255,255,0.03)",
-                            color: "rgba(148,163,184,0.5)",
-                            border: "1px solid rgba(51,65,85,0.8)",
-                          }
-                    }
+                    style={chipStyle(priceCondition === c)}
                   >
                     {c}
                   </button>
@@ -237,8 +312,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
                 placeholder="0.00"
                 value={priceTarget}
                 onChange={(e) => update({ priceTarget: e.target.value })}
-                className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                  text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none placeholder:text-slate-600"
+                className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none placeholder:text-slate-600"
               />
             </div>
           </div>
@@ -257,19 +331,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
                     key={e}
                     onClick={() => update({ walletEvent: e })}
                     className="px-2 py-1 rounded-md text-[8px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all"
-                    style={
-                      walletEvent === e
-                        ? {
-                            background: `${accent}22`,
-                            color: accent,
-                            border: `1px solid ${accent}66`,
-                          }
-                        : {
-                            background: "rgba(255,255,255,0.03)",
-                            color: "rgba(148,163,184,0.5)",
-                            border: "1px solid rgba(51,65,85,0.8)",
-                          }
-                    }
+                    style={chipStyle(walletEvent === e)}
                   >
                     {e}
                   </button>
@@ -285,8 +347,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
                 placeholder="0.00"
                 value={minAmount}
                 onChange={(e) => update({ minAmount: e.target.value })}
-                className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                  text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none placeholder:text-slate-600"
+                className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none placeholder:text-slate-600"
               />
             </div>
           </div>
@@ -324,7 +385,7 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
           ? `${token} ${priceCondition} $${priceTarget}`
           : `${token} price watch`;
       case "wallet":
-        return minAmount ? `${walletEvent} ≥ ${minAmount}` : walletEvent;
+        return minAmount ? `${walletEvent} >= ${minAmount}` : walletEvent;
       case "manual":
         return "On demand";
     }
@@ -343,8 +404,8 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
         background: "rgba(8, 12, 24, 0.97)",
       }}
     >
-      {/* Three-dot menu */}
       <button
+        ref={buttonRef}
         onClick={(e) => {
           e.stopPropagation();
           setShowMenu((v) => !v);
@@ -355,7 +416,6 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
         <MoreVertical className="w-3 h-3 text-white/60" />
       </button>
 
-      {/* Popover */}
       {showMenu && (
         <div
           ref={menuRef}
@@ -368,116 +428,56 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {/* Tabs */}
-          <div className="flex border-b border-white/10">
-            {(["type", "color"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-2 text-[9px] font-mono font-bold tracking-widest uppercase transition-all cursor-pointer ${
-                  activeTab === tab
-                    ? "text-cyan-400 border-b-2 border-cyan-400 -mb-[1px]"
-                    : "text-slate-500 hover:text-slate-300"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+          <div className="px-3 pt-3 pb-1 border-b border-white/10">
+            <span className="text-[9px] font-mono font-bold tracking-widest uppercase text-cyan-400">
+              Color
+            </span>
           </div>
-
           <div className="p-3 space-y-3">
-            {activeTab === "type" ? (
-              <div className="space-y-1">
-                {(Object.keys(TRIGGER_TYPES) as TriggerType[]).map((t) => {
-                  const cfg = TRIGGER_TYPES[t];
-                  const Icon = cfg.icon;
-                  return (
-                    <button
-                      key={t}
-                      onClick={() => {
-                        update({ triggerType: t });
-                        setShowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border cursor-pointer transition-all"
-                      style={
-                        triggerType === t
-                          ? {
-                              color: cfg.color,
-                              borderColor: `${cfg.color}66`,
-                              background: `${cfg.color}18`,
-                            }
-                          : {
-                              color: "rgba(148,163,184,0.5)",
-                              borderColor: "rgba(51,65,85,0.8)",
-                            }
-                      }
-                    >
-                      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                      <div className="text-left">
-                        <div className="text-[9px] font-mono font-bold uppercase tracking-wider">
-                          {cfg.label}
-                        </div>
-                        <div className="text-[8px] opacity-60">{cfg.desc}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={accent}
-                    onChange={(e) => update({ customColor: e.target.value })}
-                    className="w-9 h-9 rounded-lg border-2 border-slate-600 cursor-pointer"
-                    style={{ backgroundColor: accent }}
-                  />
-                  <input
-                    type="text"
-                    value={accent.toUpperCase()}
-                    onChange={(e) => {
-                      if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                        update({ customColor: e.target.value });
-                    }}
-                    className="flex-1 h-8 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                      text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
-                    maxLength={7}
-                  />
-                </div>
-                <div className="grid grid-cols-5 gap-1">
-                  {PRESET_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => update({ customColor: c })}
-                      className={`w-full aspect-square rounded-md border-2 transition-all hover:scale-110 cursor-pointer ${
-                        accent === c
-                          ? "border-white scale-105"
-                          : "border-white/10"
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-                {customColor && (
-                  <button
-                    onClick={() => {
-                      update({ customColor: undefined });
-                      setShowMenu(false);
-                    }}
-                    className="w-full py-1.5 text-[8px] font-mono text-slate-400 hover:text-cyan-400
-                      border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all cursor-pointer"
-                  >
-                    RESET TO DEFAULT COLOR
-                  </button>
-                )}
-              </>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update({ customColor: e.target.value })}
+                className="w-9 h-9 rounded-lg border-2 border-slate-600 cursor-pointer"
+                style={{ backgroundColor: accent }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update({ customColor: e.target.value });
+                }}
+                className="flex-1 h-8 px-2 bg-slate-900/80 border border-slate-700 rounded-lg text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => update({ customColor: c })}
+                  className={`w-full aspect-square rounded-md border-2 transition-all hover:scale-110 cursor-pointer ${accent === c ? "border-white scale-105" : "border-white/10"}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+            {customColor && (
+              <button
+                onClick={() => {
+                  update({ customColor: undefined });
+                  setShowMenu(false);
+                }}
+                className="w-full py-1.5 text-[8px] font-mono text-slate-400 hover:text-cyan-400 border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all cursor-pointer"
+              >
+                RESET TO DEFAULT COLOR
+              </button>
             )}
           </div>
         </div>
       )}
 
-      {/* Header */}
       <div
         className="px-3 pt-3 pb-2.5 rounded-t-2xl select-none"
         style={{
@@ -514,11 +514,8 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
-      {/* Body */}
       <div className="px-3 py-2.5 rounded-b-2xl select-none">
         {renderBody()}
-
-        {/* Footer */}
         <div
           className="flex items-center justify-between mt-2.5 pt-2"
           style={{ borderTop: `1px solid ${accent}18` }}
@@ -536,7 +533,6 @@ export const TriggerNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
-      {/* Source handle only — triggers have no input */}
       <Handle
         type="source"
         position={Position.Bottom}

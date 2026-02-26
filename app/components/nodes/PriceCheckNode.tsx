@@ -15,19 +15,6 @@ const PRICE_SOURCES = [
 
 type PriceSourceId = (typeof PRICE_SOURCES)[number]["id"];
 
-const POPULAR_TOKENS = [
-  "ETH",
-  "BTC",
-  "SOL",
-  "BNB",
-  "ARB",
-  "OP",
-  "MATIC",
-  "AVAX",
-  "LINK",
-  "UNI",
-];
-
 const PRESET_COLORS = [
   "#a855f7",
   "#f97316",
@@ -41,10 +28,8 @@ const PRESET_COLORS = [
   "#84cc16",
 ];
 
-// ── Cache ────────────────────────────────────────────────────────────────────
 const coinIdCache = new Map<string, string | null>();
 
-// ── CoinGecko ────────────────────────────────────────────────────────────────
 async function fetchCoinGecko(symbol: string) {
   const key = symbol.toUpperCase();
   if (!coinIdCache.has(key)) {
@@ -63,7 +48,6 @@ async function fetchCoinGecko(symbol: string) {
   }
   const coinId = coinIdCache.get(key);
   if (!coinId) return null;
-
   const res = await fetch(
     `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`,
     { signal: AbortSignal.timeout(6000) },
@@ -76,9 +60,7 @@ async function fetchCoinGecko(symbol: string) {
   };
 }
 
-// ── CoinMarketCap (via public widget endpoint, no API key needed) ─────────────
 async function fetchCoinMarketCap(symbol: string) {
-  // CMC has a public widget endpoint that doesn't need an API key
   try {
     const res = await fetch(
       `https://api.coinmarketcap.com/data-api/v3/cryptocurrency/market-pairs/latest?slug=${symbol.toLowerCase()}&start=1&limit=1&category=spot&centerType=all&sort=cmc_rank_advanced&direction=desc&spotUntracked=true`,
@@ -90,13 +72,11 @@ async function fetchCoinMarketCap(symbol: string) {
     if (quote == null) throw new Error("no data");
     return { price: quote, change24h: null, source: "CoinMarketCap" };
   } catch {
-    // Fallback: use CoinGecko data but label it CMC
     const cg = await fetchCoinGecko(symbol);
     return cg ? { ...cg, source: "CoinMarketCap (via CoinGecko)" } : null;
   }
 }
 
-// ── DexScreener ───────────────────────────────────────────────────────────────
 async function fetchDexScreener(symbol: string) {
   try {
     const res = await fetch(
@@ -110,13 +90,10 @@ async function fetchDexScreener(symbol: string) {
       priceUsd: string;
       priceChange?: { h24?: number };
     }> = data.pairs ?? [];
-
-    // Find best pair matching the symbol
     const match =
       pairs.find(
         (p) => p.baseToken.symbol.toUpperCase() === symbol.toUpperCase(),
       ) ?? pairs[0];
-
     if (!match?.priceUsd) throw new Error("no pair");
     return {
       price: parseFloat(match.priceUsd),
@@ -128,12 +105,9 @@ async function fetchDexScreener(symbol: string) {
   }
 }
 
-// ── Jupiter (Solana tokens) ───────────────────────────────────────────────────
-// Jupiter price API uses token mint addresses; we resolve via token list first
 const jupiterMintCache = new Map<string, string | null>();
 
 async function fetchJupiter(symbol: string) {
-  // Step 1: resolve symbol to mint address via Jupiter token list
   if (!jupiterMintCache.has(symbol.toUpperCase())) {
     try {
       const res = await fetch("https://token.jup.ag/strict", {
@@ -149,15 +123,11 @@ async function fetchJupiter(symbol: string) {
       jupiterMintCache.set(symbol.toUpperCase(), null);
     }
   }
-
   const mint = jupiterMintCache.get(symbol.toUpperCase());
   if (!mint) {
-    // Fallback to CoinGecko for non-Solana tokens
     const cg = await fetchCoinGecko(symbol);
     return cg ? { ...cg, source: "Jupiter (via CoinGecko)" } : null;
   }
-
-  // Step 2: fetch price from Jupiter price API v2
   try {
     const res = await fetch(`https://api.jup.ag/price/v2?ids=${mint}`, {
       signal: AbortSignal.timeout(6000),
@@ -176,8 +146,6 @@ async function fetchJupiter(symbol: string) {
   }
 }
 
-// ── Chainlink (via public RPC — ETH mainnet) ──────────────────────────────────
-// Uses Chainlink's Data Feeds via a public Ethereum RPC
 const CHAINLINK_FEEDS: Record<string, string> = {
   ETH: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
   BTC: "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88b",
@@ -193,55 +161,35 @@ const CHAINLINK_FEEDS: Record<string, string> = {
 async function fetchChainlink(symbol: string) {
   const feedAddress = CHAINLINK_FEEDS[symbol.toUpperCase()];
   if (!feedAddress) {
-    // Fallback to CoinGecko for tokens without a Chainlink feed
     const cg = await fetchCoinGecko(symbol);
     return cg ? { ...cg, source: "Chainlink (via CoinGecko)" } : null;
   }
-
   try {
-    // Call latestRoundData() on Chainlink aggregator via public Ethereum RPC
-    const body = {
-      jsonrpc: "2.0",
-      method: "eth_call",
-      params: [
-        {
-          to: feedAddress,
-          // latestRoundData() selector = 0xfeaf968c
-          data: "0xfeaf968c",
-        },
-        "latest",
-      ],
-      id: 1,
-    };
-
     const res = await fetch("https://eth.llamarpc.com", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "eth_call",
+        params: [{ to: feedAddress, data: "0xfeaf968c" }, "latest"],
+        id: 1,
+      }),
       signal: AbortSignal.timeout(8000),
     });
-
     if (!res.ok) throw new Error("RPC failed");
     const json = await res.json();
     const result: string = json.result;
     if (!result || result === "0x") throw new Error("empty result");
-
-    // latestRoundData returns (uint80, int256, uint256, uint256, uint80)
-    // answer is at bytes 32-64 (index 1, 32 bytes each)
     const answerHex = "0x" + result.slice(66, 130);
     const answer = BigInt(answerHex);
-    // Chainlink ETH/USD uses 8 decimals
     const price = Number(answer) / 1e8;
-
     return { price, change24h: null, source: "Chainlink" };
   } catch {
-    // Fallback to CoinGecko
     const cg = await fetchCoinGecko(symbol);
     return cg ? { ...cg, source: "Chainlink (via CoinGecko)" } : null;
   }
 }
 
-// ── Main fetch dispatcher ─────────────────────────────────────────────────────
 async function fetchPrice(
   symbol: string,
   source: PriceSourceId,
@@ -276,7 +224,6 @@ function formatPrice(price: number): string {
   return `$${price.toExponential(4)}`;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
 export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
@@ -286,7 +233,6 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
   const accent = customColor || "#2dd4bf";
 
   const [showMenu, setShowMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<"config" | "color">("config");
   const [price, setPrice] = useState<number | null>(null);
   const [change24h, setChange24h] = useState<number | null>(null);
   const [resolvedSource, setResolvedSource] = useState<string | null>(null);
@@ -295,6 +241,7 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
   const [lastFetched, setLastFetched] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const update = (patch: Record<string, unknown>) => updateNodeData(id, patch);
@@ -303,9 +250,7 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
     if (!token.trim()) return;
     setLoading(true);
     setError(null);
-
     const result = await fetchPrice(token, priceSource);
-
     if (!result || result.price === null) {
       setError(
         `Not found on ${PRICE_SOURCES.find((s) => s.id === priceSource)?.label}`,
@@ -319,7 +264,6 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
       setError(null);
       setLastFetched(new Date().toLocaleTimeString());
     }
-
     setLoading(false);
   }, [token, priceSource]);
 
@@ -336,19 +280,14 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
   }, [doFetch]);
 
   useEffect(() => {
-    if (!showMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Element))
-        setShowMenu(false);
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (buttonRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setShowMenu(false);
     };
-    document.addEventListener("mousedown", handler, true);
-    return () => document.removeEventListener("mousedown", handler, true);
-  }, [showMenu]);
-
-  useEffect(() => {
-    const close = () => setShowMenu(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
+    window.addEventListener("mousedown", handleMouseDown, true);
+    return () => window.removeEventListener("mousedown", handleMouseDown, true);
   }, []);
 
   const isPositive = change24h !== null && change24h >= 0;
@@ -357,9 +296,7 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
 
   return (
     <div
-      className={`relative min-w-[240px] rounded-2xl overflow-visible transition-all duration-200 ${
-        selected ? "ring-2 shadow-2xl" : "ring-1 hover:ring-opacity-50"
-      }`}
+      className={`relative min-w-[240px] rounded-2xl overflow-visible transition-all duration-200 ${selected ? "ring-2 shadow-2xl" : "ring-1 hover:ring-opacity-50"}`}
       style={{
         borderColor: selected ? accent : `${accent}44`,
         boxShadow: selected
@@ -368,8 +305,9 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
         background: "rgba(8, 12, 24, 0.97)",
       }}
     >
-      {/* Three-dot menu */}
+      {/* Three-dot button */}
       <button
+        ref={buttonRef}
         onClick={(e) => {
           e.stopPropagation();
           setShowMenu((v) => !v);
@@ -380,11 +318,11 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
         <MoreVertical className="w-3 h-3 text-white/60" />
       </button>
 
-      {/* Popover */}
+      {/* Popover — color only */}
       {showMenu && (
         <div
           ref={menuRef}
-          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-56 rounded-xl overflow-hidden shadow-2xl"
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
           style={{
             background: "rgba(10, 15, 30, 0.98)",
             border: "1px solid rgba(148,163,184,0.15)",
@@ -393,166 +331,56 @@ export const PriceCheckNode = memo(({ data, selected, id }: NodeProps) => {
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {/* Tabs */}
-          <div className="flex border-b border-white/10">
-            {(["config", "color"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-2 text-[9px] font-mono font-bold tracking-widest uppercase transition-all cursor-pointer ${
-                  activeTab === tab
-                    ? "text-cyan-400 border-b-2 border-cyan-400 -mb-[1px]"
-                    : "text-slate-500 hover:text-slate-300"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+          <div className="px-2 py-1.5 border-b border-white/10">
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
+            >
+              Node Color
+            </span>
           </div>
-
           <div className="p-3 space-y-3">
-            {activeTab === "config" ? (
-              <>
-                {/* Token */}
-                <div>
-                  <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
-                    Token Symbol
-                  </div>
-                  <input
-                    type="text"
-                    value={token}
-                    onChange={(e) =>
-                      update({ token: e.target.value.toUpperCase() })
-                    }
-                    placeholder="ETH, SOL, PEPE, WIF..."
-                    className="w-full h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                      text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none
-                      placeholder:text-slate-600"
-                  />
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {POPULAR_TOKENS.map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => update({ token: t })}
-                        className="px-1.5 py-0.5 rounded text-[7px] font-mono font-bold cursor-pointer transition-all"
-                        style={
-                          token === t
-                            ? {
-                                background: `${accent}22`,
-                                color: accent,
-                                border: `1px solid ${accent}55`,
-                              }
-                            : {
-                                background: "rgba(255,255,255,0.04)",
-                                color: "rgba(148,163,184,0.5)",
-                                border: "1px solid rgba(51,65,85,0.8)",
-                              }
-                        }
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Price source — pill buttons, no dropdown */}
-                <div>
-                  <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
-                    Price Source
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {PRICE_SOURCES.map((src) => (
-                      <button
-                        key={src.id}
-                        onClick={() => update({ priceSource: src.id })}
-                        className="w-full px-2.5 py-1.5 rounded-lg text-[9px] font-mono font-bold
-                          tracking-wider cursor-pointer transition-all text-left"
-                        style={
-                          priceSource === src.id
-                            ? {
-                                background: `${accent}22`,
-                                color: accent,
-                                border: `1px solid ${accent}55`,
-                              }
-                            : {
-                                background: "rgba(255,255,255,0.03)",
-                                color: "rgba(148,163,184,0.5)",
-                                border: "1px solid rgba(51,65,85,0.8)",
-                              }
-                        }
-                      >
-                        {src.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="text-[8px] font-mono text-slate-600 mt-1.5 leading-relaxed">
-                    // jupiter = solana tokens only{"\n"}// chainlink = on-chain
-                    oracles
-                  </div>
-                </div>
-
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update({ customColor: e.target.value })}
+                className="w-9 h-9 rounded-lg border-2 border-slate-600 cursor-pointer"
+                style={{ backgroundColor: accent }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update({ customColor: e.target.value });
+                }}
+                className="flex-1 h-8 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
+                  text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
                 <button
-                  onClick={doFetch}
-                  disabled={loading}
-                  className="w-full py-1.5 rounded-lg text-[8px] font-mono font-bold uppercase tracking-widest
-                    border border-slate-700 hover:border-cyan-500/50 text-slate-400 hover:text-cyan-400
-                    transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40"
-                >
-                  <RefreshCw
-                    className={`w-2.5 h-2.5 ${loading ? "animate-spin" : ""}`}
-                  />
-                  {loading ? "Fetching..." : "Refresh Now"}
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={accent}
-                    onChange={(e) => update({ customColor: e.target.value })}
-                    className="w-9 h-9 rounded-lg border-2 border-slate-600 cursor-pointer"
-                    style={{ backgroundColor: accent }}
-                  />
-                  <input
-                    type="text"
-                    value={accent.toUpperCase()}
-                    onChange={(e) => {
-                      if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                        update({ customColor: e.target.value });
-                    }}
-                    className="flex-1 h-8 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                      text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
-                    maxLength={7}
-                  />
-                </div>
-                <div className="grid grid-cols-5 gap-1">
-                  {PRESET_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => update({ customColor: c })}
-                      className={`w-full aspect-square rounded-md border-2 transition-all hover:scale-110 cursor-pointer ${
-                        accent === c
-                          ? "border-white scale-105"
-                          : "border-white/10"
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-                {customColor && (
-                  <button
-                    onClick={() => {
-                      update({ customColor: undefined });
-                      setShowMenu(false);
-                    }}
-                    className="w-full py-1.5 text-[8px] font-mono text-slate-400 hover:text-cyan-400
-                      border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all cursor-pointer"
-                  >
-                    RESET TO DEFAULT
-                  </button>
-                )}
-              </>
+                  key={c}
+                  onClick={() => update({ customColor: c })}
+                  className={`w-full aspect-square rounded-md border-2 transition-all hover:scale-110 cursor-pointer ${accent === c ? "border-white scale-105" : "border-white/10"}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+            {customColor && (
+              <button
+                onClick={() => {
+                  update({ customColor: undefined });
+                  setShowMenu(false);
+                }}
+                className="w-full py-1.5 text-[8px] font-mono text-slate-400 hover:text-cyan-400
+                  border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all cursor-pointer"
+              >
+                RESET TO DEFAULT
+              </button>
             )}
           </div>
         </div>

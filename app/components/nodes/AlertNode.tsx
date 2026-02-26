@@ -79,13 +79,25 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
   const [showMenu, setShowMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<"color" | "settings">("color");
   const [pulsing, setPulsing] = useState(false);
-  const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const close = () => setShowMenu(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
-  }, []);
+    if (!showMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (
+        popoverRef.current?.contains(target) ||
+        buttonRef.current?.contains(target)
+      )
+        return;
+      setShowMenu(false);
+    };
+    window.addEventListener("mousedown", handleClick, true);
+    return () => window.removeEventListener("mousedown", handleClick, true);
+  }, [showMenu]);
+  const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (sev.pulse && selected) {
@@ -118,6 +130,7 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
     >
       {/* ── Three-dot menu ── */}
       <button
+        ref={buttonRef}
         onClick={(e) => {
           e.stopPropagation();
           setShowMenu((v) => !v);
@@ -130,108 +143,139 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
 
       {/* ── Popover ── */}
       {showMenu && (
-        <>
-          <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowMenu(false)}
-            onMouseDown={() => setShowMenu(false)}
-          />
-          <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(10, 15, 30, 0.98)",
-              border: "1px solid rgba(148,163,184,0.15)",
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            {/* Tabs */}
-            <div className="flex border-b border-white/10">
-              {(["color", "settings"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex-1 py-2 text-[9px] font-mono font-bold tracking-widest uppercase transition-all cursor-pointer ${
-                    activeTab === tab
-                      ? "text-cyan-400 border-b-2 border-cyan-400 -mb-[1px]"
-                      : "text-slate-500 hover:text-slate-300"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(10, 15, 30, 0.98)",
+            border: "1px solid rgba(148,163,184,0.15)",
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Tabs */}
+          <div className="flex border-b border-white/10">
+            {(["color", "settings"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-2 text-[9px] font-mono font-bold tracking-widest uppercase transition-all cursor-pointer ${
+                  activeTab === tab
+                    ? "text-cyan-400 border-b-2 border-cyan-400 -mb-[1px]"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
 
-            <div className="p-3 space-y-3">
-              {activeTab === "color" ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(e) => update({ customColor: e.target.value })}
-                      className="w-9 h-9 rounded-lg border-2 border-slate-600 cursor-pointer"
-                      style={{ backgroundColor: accent }}
-                    />
-                    <input
-                      type="text"
-                      value={accent.toUpperCase()}
-                      onChange={(e) => {
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                          update({ customColor: e.target.value });
-                      }}
-                      className="flex-1 h-8 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                        text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
-                      maxLength={7}
-                    />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {PRESET_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => update({ customColor: c })}
-                        className={`w-full aspect-square rounded-md border-2 transition-all hover:scale-110 cursor-pointer ${
-                          accent === c
-                            ? "border-white scale-105"
-                            : "border-white/10"
-                        }`}
-                        style={{ backgroundColor: c }}
-                      />
-                    ))}
-                  </div>
-                  {customColor && (
+          <div className="p-3 space-y-3">
+            {activeTab === "color" ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={accent}
+                    onChange={(e) => update({ customColor: e.target.value })}
+                    className="w-9 h-9 rounded-lg border-2 border-slate-600 cursor-pointer"
+                    style={{ backgroundColor: accent }}
+                  />
+                  <input
+                    type="text"
+                    value={accent.toUpperCase()}
+                    onChange={(e) => {
+                      if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                        update({ customColor: e.target.value });
+                    }}
+                    className="flex-1 h-8 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
+                      text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
+                    maxLength={7}
+                  />
+                </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {PRESET_COLORS.map((c) => (
                     <button
-                      onClick={() => {
-                        update({ customColor: undefined });
-                        setShowMenu(false);
-                      }}
-                      className="w-full py-1.5 text-[8px] font-mono text-slate-400 hover:text-cyan-400
-                        border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all cursor-pointer"
-                    >
-                      RESET TO SEVERITY COLOR
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  {/* Severity */}
-                  <div>
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
-                      Severity
-                    </div>
-                    <div className="grid grid-cols-2 gap-1">
-                      {(Object.keys(SEVERITY_CONFIG) as Severity[]).map((s) => {
-                        const cfg = SEVERITY_CONFIG[s];
+                      key={c}
+                      onClick={() => update({ customColor: c })}
+                      className={`w-full aspect-square rounded-md border-2 transition-all hover:scale-110 cursor-pointer ${
+                        accent === c
+                          ? "border-white scale-105"
+                          : "border-white/10"
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+                {customColor && (
+                  <button
+                    onClick={() => {
+                      update({ customColor: undefined });
+                      setShowMenu(false);
+                    }}
+                    className="w-full py-1.5 text-[8px] font-mono text-slate-400 hover:text-cyan-400
+                      border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all cursor-pointer"
+                  >
+                    RESET TO SEVERITY COLOR
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Severity */}
+                <div>
+                  <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
+                    Severity
+                  </div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {(Object.keys(SEVERITY_CONFIG) as Severity[]).map((s) => {
+                      const cfg = SEVERITY_CONFIG[s];
+                      const Icon = cfg.icon;
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => update({ severity: s })}
+                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[9px] font-mono
+                            font-bold uppercase tracking-wider cursor-pointer transition-all`}
+                          style={
+                            severity === s
+                              ? {
+                                  color: cfg.color,
+                                  borderColor: `${cfg.color}66`,
+                                  background: `${cfg.color}18`,
+                                }
+                              : {
+                                  color: "rgba(148,163,184,0.5)",
+                                  borderColor: "rgba(51,65,85,0.8)",
+                                }
+                          }
+                        >
+                          <Icon className="w-3 h-3" />
+                          {cfg.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Channel */}
+                <div>
+                  <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
+                    Channel
+                  </div>
+                  <div className="space-y-1">
+                    {(Object.keys(ALERT_CHANNELS) as AlertChannel[]).map(
+                      (ch) => {
+                        const cfg = ALERT_CHANNELS[ch];
                         const Icon = cfg.icon;
                         return (
                           <button
-                            key={s}
-                            onClick={() => update({ severity: s })}
-                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[9px] font-mono
-                              font-bold uppercase tracking-wider cursor-pointer transition-all`}
+                            key={ch}
+                            onClick={() => update({ alertType: ch })}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border text-[9px]
+                            font-mono font-bold uppercase tracking-wider cursor-pointer transition-all"
                             style={
-                              severity === s
+                              alertType === ch
                                 ? {
                                     color: cfg.color,
                                     borderColor: `${cfg.color}66`,
@@ -247,72 +291,34 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
                             {cfg.label}
                           </button>
                         );
-                      })}
-                    </div>
+                      },
+                    )}
                   </div>
+                </div>
 
-                  {/* Channel */}
-                  <div>
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
-                      Channel
-                    </div>
-                    <div className="space-y-1">
-                      {(Object.keys(ALERT_CHANNELS) as AlertChannel[]).map(
-                        (ch) => {
-                          const cfg = ALERT_CHANNELS[ch];
-                          const Icon = cfg.icon;
-                          return (
-                            <button
-                              key={ch}
-                              onClick={() => update({ alertType: ch })}
-                              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border text-[9px]
-                              font-mono font-bold uppercase tracking-wider cursor-pointer transition-all"
-                              style={
-                                alertType === ch
-                                  ? {
-                                      color: cfg.color,
-                                      borderColor: `${cfg.color}66`,
-                                      background: `${cfg.color}18`,
-                                    }
-                                  : {
-                                      color: "rgba(148,163,184,0.5)",
-                                      borderColor: "rgba(51,65,85,0.8)",
-                                    }
-                              }
-                            >
-                              <Icon className="w-3 h-3" />
-                              {cfg.label}
-                            </button>
-                          );
-                        },
-                      )}
-                    </div>
+                {/* Cooldown */}
+                <div>
+                  <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
+                    Cooldown (s)
                   </div>
-
-                  {/* Cooldown */}
-                  <div>
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase mb-1.5">
-                      Cooldown (s)
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-3 h-3 text-slate-500" />
-                      <input
-                        type="number"
-                        min={0}
-                        value={cooldown}
-                        onChange={(e) =>
-                          update({ cooldown: Number(e.target.value) })
-                        }
-                        className="flex-1 h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
-                          text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
-                      />
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3 h-3 text-slate-500" />
+                    <input
+                      type="number"
+                      min={0}
+                      value={cooldown}
+                      onChange={(e) =>
+                        update({ cooldown: Number(e.target.value) })
+                      }
+                      className="flex-1 h-7 px-2 bg-slate-900/80 border border-slate-700 rounded-lg
+                        text-[10px] font-mono text-cyan-100 focus:border-cyan-500 focus:outline-none"
+                    />
                   </div>
-                </>
-              )}
-            </div>
+                </div>
+              </>
+            )}
           </div>
-        </>
+        </div>
       )}
 
       {/* ── Header ── */}

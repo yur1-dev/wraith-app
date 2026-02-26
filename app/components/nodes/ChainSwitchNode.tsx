@@ -10,12 +10,9 @@ import {
   Loader2,
   RefreshCw,
   AlertTriangle,
-  Zap,
   ArrowRight,
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
-
-// ── Supported chains ──────────────────────────────────────────────────────────
 
 const CHAINS = [
   "Ethereum",
@@ -30,7 +27,6 @@ const CHAINS = [
   "Solana",
 ];
 
-// Chain metadata for display
 const CHAIN_META: Record<string, { color: string; symbol: string }> = {
   Ethereum: { color: "#627eea", symbol: "ETH" },
   Arbitrum: { color: "#28a0f0", symbol: "ARB" },
@@ -57,17 +53,12 @@ const PRESET_COLORS = [
   "#84cc16",
 ];
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 interface ChainStatus {
   connected: boolean;
   blockNumber: number;
   gasGwei: number;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-// Simulates a chain connection check — replace with real RPC call if needed
 async function fetchChainStatus(chain: string): Promise<ChainStatus> {
   await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
   const blockBases: Record<string, number> = {
@@ -103,8 +94,6 @@ async function fetchChainStatus(chain: string): Promise<ChainStatus> {
   };
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
 export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
@@ -119,15 +108,31 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
   };
   const accent = customColor ?? chainMeta.color;
 
-  const [tab, setTab] = useState<"config" | "color">("config");
   const [showPopover, setShowPopover] = useState(false);
   const [status, setStatus] = useState<ChainStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
+  useEffect(() => {
+    if (!showPopover) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (
+        popoverRef.current?.contains(target) ||
+        buttonRef.current?.contains(target)
+      )
+        return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleClick, true);
+    return () => window.removeEventListener("mousedown", handleClick, true);
+  }, [showPopover]);
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const update = (field: string, val: unknown) =>
     updateNodeData(id, { [field]: val });
 
@@ -154,12 +159,6 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
     };
   }, [refresh, autoRefresh]);
 
-  useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
-  }, []);
-
   const isReady = !!status && !error;
   const statusColor = error ? "#f87171" : isReady ? "#34d399" : "#94a3b8";
   const statusLabel = error ? "error" : isReady ? "ready" : "loading";
@@ -178,7 +177,7 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
         backdropFilter: "blur(20px)",
       }}
     >
-      {/* ── Header ── */}
+      {/* Header */}
       <div
         className="px-3 py-2.5 rounded-t-xl flex items-center justify-between select-none"
         style={{
@@ -206,6 +205,7 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -227,9 +227,8 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
         }}
       />
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="px-3 py-3 space-y-2 select-none">
-        {/* Error */}
         {error && (
           <div
             className="rounded-lg px-3 py-1.5 flex items-center gap-2"
@@ -243,7 +242,6 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         )}
 
-        {/* Route card */}
         <div
           className="rounded-lg px-3 py-2.5"
           style={{
@@ -295,7 +293,6 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
 
-        {/* Chain status */}
         <div
           className="rounded-lg px-3 py-2"
           style={{
@@ -341,7 +338,6 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             {isReady ? (
@@ -388,200 +384,87 @@ export const ChainSwitchNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
-      {/* ── Popover ── */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-56 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
-          />
-          <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-60 rounded-xl overflow-hidden shadow-2xl"
+            className="h-px w-full"
             style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
             }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          />
+          <div className="p-3 space-y-3">
             <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-
-            <div
-              className="flex border-b"
-              style={{ borderColor: `${accent}15` }}
+              className="text-[8px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: `${accent}80` }}
             >
-              {(["config", "color"] as const).map((t) => (
+              Node Color
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-9 h-9 rounded border-2 cursor-pointer"
+                style={{
+                  borderColor: `${accent}66`,
+                  backgroundColor: accent,
+                }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-2 text-[9px] font-mono font-bold uppercase tracking-widest cursor-pointer transition-all"
-                  style={
-                    tab === t
-                      ? { color: accent, borderBottom: `1px solid ${accent}` }
-                      : { color: "rgba(100,116,139,0.6)" }
-                  }
-                >
-                  {t}
-                </button>
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
               ))}
             </div>
-
-            <div className="p-3 space-y-3">
-              {tab === "config" && (
-                <>
-                  {/* Current chain */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Current Chain
-                    </div>
-                    <select
-                      value={currentChain}
-                      onChange={(e) => update("currentChain", e.target.value)}
-                      className="w-full h-7 px-2 rounded-md text-[10px] font-mono focus:outline-none cursor-pointer"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                        color: accent,
-                      }}
-                    >
-                      {CHAINS.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Target chain */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Target Chain
-                    </div>
-                    <select
-                      value={targetChain}
-                      onChange={(e) => update("targetChain", e.target.value)}
-                      className="w-full h-7 px-2 rounded-md text-[10px] font-mono focus:outline-none cursor-pointer"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                        color: accent,
-                      }}
-                    >
-                      {CHAINS.filter((c) => c !== currentChain).map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Auto-refresh toggle */}
-                  <div className="flex items-center justify-between">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Auto-refresh (30s)
-                    </div>
-                    <button
-                      onClick={() => update("autoRefresh", !autoRefresh)}
-                      className="w-8 h-4 rounded-full relative transition-all cursor-pointer"
-                      style={{
-                        background: autoRefresh
-                          ? `${accent}44`
-                          : "rgba(51,65,85,0.6)",
-                        border: `1px solid ${autoRefresh ? accent : "rgba(51,65,85,0.8)"}`,
-                      }}
-                    >
-                      <span
-                        className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
-                        style={{
-                          background: autoRefresh ? accent : "#475569",
-                          left: autoRefresh ? "calc(100% - 14px)" : "1px",
-                        }}
-                      />
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={refresh}
-                    className="w-full h-7 rounded-lg flex items-center justify-center gap-1.5 text-[8px] font-mono font-bold uppercase tracking-widest cursor-pointer"
-                    style={{
-                      background: `${accent}15`,
-                      border: `1px solid ${accent}33`,
-                      color: accent,
-                    }}
-                  >
-                    <Zap className="w-2.5 h-2.5" /> Check Chain
-                  </button>
-                </>
-              )}
-
-              {tab === "color" && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(e) => update("customColor", e.target.value)}
-                      className="w-10 h-10 rounded border-2 cursor-pointer"
-                      style={{
-                        borderColor: `${accent}66`,
-                        backgroundColor: accent,
-                      }}
-                    />
-                    <input
-                      type="text"
-                      value={accent.toUpperCase()}
-                      onChange={(e) => {
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                          update("customColor", e.target.value);
-                      }}
-                      className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      maxLength={7}
-                    />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {PRESET_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => update("customColor", c)}
-                        className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                        style={{
-                          backgroundColor: c,
-                          borderColor:
-                            accent === c ? "white" : "rgba(51,65,85,0.5)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {customColor && (
-                    <button
-                      onClick={() => update("customColor", undefined)}
-                      className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                      style={{
-                        color: "rgba(148,163,184,0.6)",
-                        borderColor: "rgba(51,65,85,0.5)",
-                      }}
-                    >
-                      Reset to Chain Color
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset to Chain Color
+              </button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
-      {/* ── Handles ── */}
       <Handle
         type="target"
         position={Position.Top}

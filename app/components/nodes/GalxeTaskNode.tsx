@@ -60,7 +60,6 @@ const ACTION_CONFIG: Record<
 export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
-  // ── data ──────────────────────────────────────────────────────────────
   const campaignName = String(data.campaignName ?? "");
   const campaignUrl = String(data.campaignUrl ?? "");
   const action = String(data.action ?? "complete") as
@@ -68,7 +67,6 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
     | "claim"
     | "check";
   const galxeToken = String(data.galxeToken ?? "");
-  // Wallet comes from upstream WalletConnectNode
   const walletAddress = String(
     (data.walletPublicKey as string | undefined) ??
       (data.connectedWallet as string | undefined) ??
@@ -77,7 +75,6 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
   const customColor = data.customColor as string | undefined;
   const accent = customColor ?? "#a78bfa";
 
-  // ── local state ───────────────────────────────────────────────────────
   const [showPopover, setShowPopover] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [status, setStatus] = useState<TaskStatus>("idle");
@@ -85,9 +82,11 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
   const [lastRun, setLastRun] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
-  const [tokenValid, setTokenValid] = useState<boolean | null>(null); // null = unchecked
+  const [tokenValid, setTokenValid] = useState<boolean | null>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tokenCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   const update = (field: string, val: unknown) =>
     updateNodeData(id, { [field]: val });
@@ -97,9 +96,14 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
   }, [data.lastRun]);
 
   useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleMouseDown, true);
+    return () => window.removeEventListener("mousedown", handleMouseDown, true);
   }, []);
 
   useEffect(() => {
@@ -109,7 +113,6 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
     };
   }, []);
 
-  // ── Token validation (debounced) ──────────────────────────────────────
   useEffect(() => {
     if (!galxeToken || galxeToken.length < 10) {
       setTokenValid(null);
@@ -126,10 +129,8 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
     }, 800);
   }, [galxeToken]);
 
-  // ── derived / validation ──────────────────────────────────────────────
   const actionCfg = ACTION_CONFIG[action] ?? ACTION_CONFIG.complete;
 
-  // Every field that must be filled before we allow execution
   const missingFields: string[] = [];
   if (!campaignUrl.trim()) missingFields.push("Campaign URL");
   if (!galxeToken.trim()) missingFields.push("Galxe token");
@@ -142,18 +143,15 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
   const notReadyReason =
     missingFields.length > 0 ? `Missing: ${missingFields.join(", ")}` : null;
 
-  // URL display
   const displayUrl = campaignUrl
     .replace("https://", "")
     .replace("http://", "")
     .slice(0, 30);
 
-  // Token display
   const maskedToken = galxeToken
     ? galxeToken.slice(0, 4) + "••••••••" + galxeToken.slice(-4)
     : "";
 
-  // ── execute ───────────────────────────────────────────────────────────
   const handleRun = useCallback(async () => {
     if (!canRun) return;
 
@@ -211,7 +209,6 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
     updateNodeData,
   ]);
 
-  // ── status config ─────────────────────────────────────────────────────
   const statusConfig: Record<
     TaskStatus,
     { color: string; label: string; icon: React.ReactNode }
@@ -253,7 +250,7 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
         backdropFilter: "blur(20px)",
       }}
     >
-      {/* ── Header ── */}
+      {/* Header */}
       <div
         className="px-3 py-2.5 rounded-t-xl flex items-center justify-between select-none"
         style={{
@@ -281,6 +278,7 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -295,7 +293,6 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
         </button>
       </div>
 
-      {/* Accent divider */}
       <div
         className="h-px w-full"
         style={{
@@ -303,7 +300,7 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
         }}
       />
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="px-3 py-3 space-y-2 select-none">
         {/* Galxe token row */}
         <div
@@ -533,96 +530,90 @@ export const GalxeTaskNode = memo(({ data, selected, id }: NodeProps) => {
         )}
       </div>
 
-      {/* ── Popover ── */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
+            className="h-px w-full"
+            style={{
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
+            }}
           />
           <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="px-2 py-1.5 border-b"
+            style={{ borderColor: `${accent}15` }}
           >
-            <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-            <div
-              className="px-2 py-1.5 border-b"
-              style={{ borderColor: `${accent}15` }}
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
             >
-              <span
-                className="text-[9px] font-mono font-bold uppercase tracking-widest"
-                style={{ color: accent }}
-              >
-                Node Color
-              </span>
-            </div>
-            <div className="p-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={accent}
-                  onChange={(e) => update("customColor", e.target.value)}
-                  className="w-10 h-10 rounded border-2 cursor-pointer"
-                  style={{
-                    borderColor: `${accent}66`,
-                    backgroundColor: accent,
-                  }}
-                />
-                <input
-                  type="text"
-                  value={accent.toUpperCase()}
-                  onChange={(e) => {
-                    if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                      update("customColor", e.target.value);
-                  }}
-                  className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                  style={{
-                    background: "rgba(2,6,23,0.9)",
-                    border: "1px solid rgba(51,65,85,0.8)",
-                  }}
-                  maxLength={7}
-                />
-              </div>
-              <div className="grid grid-cols-5 gap-1">
-                {PRESET_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => update("customColor", c)}
-                    className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                    style={{
-                      backgroundColor: c,
-                      borderColor:
-                        accent === c ? "white" : "rgba(51,65,85,0.5)",
-                    }}
-                  />
-                ))}
-              </div>
-              {customColor && (
-                <button
-                  onClick={() => update("customColor", undefined)}
-                  className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                  style={{
-                    color: "rgba(148,163,184,0.6)",
-                    borderColor: "rgba(51,65,85,0.5)",
-                  }}
-                >
-                  Reset
-                </button>
-              )}
-            </div>
+              Node Color
+            </span>
           </div>
-        </>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-10 h-10 rounded border-2 cursor-pointer"
+                style={{
+                  borderColor: `${accent}66`,
+                  backgroundColor: accent,
+                }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
+              ))}
+            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       <Handle

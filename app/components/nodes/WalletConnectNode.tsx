@@ -28,13 +28,10 @@ const PRESET_COLORS = [
   "#84cc16",
 ];
 
-// Solana-first. EVM wallets included for multi-chain flows.
 const WALLET_TYPES = [
-  // ── Solana ────────────────────────────────────────────────────────────────
   { id: "phantom", label: "Phantom", color: "#9945FF", chain: "solana" },
   { id: "backpack", label: "Backpack", color: "#E33E3F", chain: "solana" },
   { id: "solflare", label: "Solflare", color: "#FC8A03", chain: "solana" },
-  // ── EVM ───────────────────────────────────────────────────────────────────
   { id: "metamask", label: "MetaMask", color: "#f97316", chain: "evm" },
   { id: "rabby", label: "Rabby", color: "#8B5CF6", chain: "evm" },
   { id: "coinbase", label: "Coinbase", color: "#0052FF", chain: "evm" },
@@ -47,7 +44,6 @@ type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
-  // ── data fields ──────────────────────────────────────────────────────────
   const walletType = String(data.walletType ?? "phantom");
   const address = data.address ? String(data.address) : null;
   const balance = data.balance ? String(data.balance) : null;
@@ -58,7 +54,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
     WALLET_TYPES.find((w) => w.id === walletType) ?? WALLET_TYPES[0];
   const accent = customColor ?? walletMeta.color;
 
-  // ── local state ───────────────────────────────────────────────────────────
   const [showPopover, setShowPopover] = useState(false);
   const [status, setStatus] = useState<ConnectionStatus>(
     address ? "connected" : "disconnected",
@@ -66,35 +61,41 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!showPopover) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (
+        popoverRef.current?.contains(target) ||
+        buttonRef.current?.contains(target)
+      )
+        return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleClick, true);
+    return () => window.removeEventListener("mousedown", handleClick, true);
+  }, [showPopover]);
+
   const update = (field: string, val: unknown) =>
     updateNodeData(id, { [field]: val });
 
-  // ── when walletType changes, wipe ALL connection data immediately ─────────
   const prevWalletTypeRef = useRef(walletType);
   useEffect(() => {
     if (prevWalletTypeRef.current !== walletType) {
       prevWalletTypeRef.current = walletType;
-      // clear stale address/balance/network from the previous wallet
       updateNodeData(id, { address: null, balance: null, network: null });
       setStatus("disconnected");
       setErrorMsg(null);
     }
   }, [walletType, id, updateNodeData]);
 
-  // keep status in sync when address changes from outside
   useEffect(() => {
     setStatus(address ? "connected" : "disconnected");
   }, [address]);
 
-  useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
-  }, []);
-
-  // ── helpers ───────────────────────────────────────────────────────────────
-
-  // Fetch SOL balance via JSON-RPC (no SDK needed)
   const fetchSolBalance = async (pubkey: string): Promise<string | null> => {
     try {
       const res = await fetch(SOL_RPC, {
@@ -117,13 +118,11 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
     }
   };
 
-  // Find a specific EVM provider — checks identity flags and providers[] array
   const getEvmProvider = (walletId: string): any => {
     const win = window as any;
     const eth = win.ethereum;
     if (!eth) return null;
 
-    // Multiple wallets injected — they expose a providers[] array
     if (Array.isArray(eth.providers)) {
       const match = eth.providers.find((p: any) => {
         if (walletId === "metamask")
@@ -136,7 +135,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
       if (match) return match;
     }
 
-    // Single provider — check identity flags
     if (walletId === "metamask" && eth.isMetaMask && !eth.isRabby) return eth;
     if (walletId === "rabby" && eth.isRabby) return eth;
     if (
@@ -173,7 +171,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
     return { addr, network, balance: `${bal.toFixed(4)} ETH` };
   };
 
-  // ── actions ───────────────────────────────────────────────────────────────
   const handleConnect = useCallback(async () => {
     setStatus("connecting");
     setErrorMsg(null);
@@ -183,7 +180,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
       let network: string | null = null;
       let balance: string | null = null;
 
-      // ── Phantom (Solana) ──────────────────────────────────────────────────
       if (walletType === "phantom") {
         const win = window as any;
         const provider = win.phantom?.solana ?? win.solana;
@@ -200,11 +196,8 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
         }
         network = "Solana";
         balance = await fetchSolBalance(addr);
-
-        // ── Backpack (Solana) ─────────────────────────────────────────────────
       } else if (walletType === "backpack") {
         const win = window as any;
-        // Backpack exposes window.backpack for Solana
         const provider = win.backpack;
         if (!provider) {
           setErrorMsg("Backpack not installed. Add the extension first.");
@@ -219,8 +212,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
         }
         network = "Solana";
         balance = await fetchSolBalance(addr);
-
-        // ── Solflare (Solana) ─────────────────────────────────────────────────
       } else if (walletType === "solflare") {
         const win = window as any;
         const provider = win.solflare;
@@ -237,8 +228,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
         }
         network = "Solana";
         balance = await fetchSolBalance(addr);
-
-        // ── MetaMask (EVM) ────────────────────────────────────────────────────
       } else if (walletType === "metamask") {
         const provider = getEvmProvider("metamask");
         if (!provider) {
@@ -252,8 +241,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
           return;
         }
         ({ addr, network, balance } = result);
-
-        // ── Rabby (EVM) ───────────────────────────────────────────────────────
       } else if (walletType === "rabby") {
         const provider = getEvmProvider("rabby");
         if (!provider) {
@@ -267,8 +254,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
           return;
         }
         ({ addr, network, balance } = result);
-
-        // ── Coinbase Wallet (EVM) ─────────────────────────────────────────────
       } else if (walletType === "coinbase") {
         const provider = getEvmProvider("coinbase");
         if (!provider) {
@@ -316,7 +301,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
     });
   }, [address]);
 
-  // ── derived display ───────────────────────────────────────────────────────
   const shortAddr = address
     ? `${address.slice(0, 6)}…${address.slice(-4)}`
     : null;
@@ -392,6 +376,7 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -406,7 +391,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
         </button>
       </div>
 
-      {/* accent line */}
       <div
         className="h-px w-full"
         style={{
@@ -416,7 +400,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
 
       {/* ── Body ── */}
       <div className="px-3 py-3 space-y-2 select-none">
-        {/* status row */}
         <div
           className="rounded-lg px-3 py-2 flex items-center justify-between"
           style={{
@@ -430,8 +413,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
               {sc.label}
             </span>
           </div>
-
-          {/* wallet type indicator */}
           <div
             className="px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase tracking-widest"
             style={{
@@ -444,7 +425,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
 
-        {/* address row — only when connected */}
         {status === "connected" && shortAddr && (
           <div
             className="rounded-lg px-3 py-2 flex items-center justify-between"
@@ -496,7 +476,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         )}
 
-        {/* error hint */}
         {status === "error" && (
           <div
             className="rounded-lg px-3 py-1.5 flex items-center gap-2"
@@ -513,7 +492,6 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         )}
 
-        {/* connect / disconnect button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -554,97 +532,90 @@ export const WalletConnectNode = memo(({ data, selected, id }: NodeProps) => {
 
       {/* ── Popover — color only ── */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
+            className="h-px w-full"
+            style={{
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
+            }}
           />
           <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="px-2 py-1.5 border-b"
+            style={{ borderColor: `${accent}15` }}
           >
-            <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-            <div
-              className="px-2 py-1.5 border-b"
-              style={{ borderColor: `${accent}15` }}
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
             >
-              <span
-                className="text-[9px] font-mono font-bold uppercase tracking-widest"
-                style={{ color: accent }}
-              >
-                Node Color
-              </span>
-            </div>
-            <div className="p-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={accent}
-                  onChange={(e) => update("customColor", e.target.value)}
-                  className="w-10 h-10 rounded border-2 cursor-pointer"
-                  style={{
-                    borderColor: `${accent}66`,
-                    backgroundColor: accent,
-                  }}
-                />
-                <input
-                  type="text"
-                  value={accent.toUpperCase()}
-                  onChange={(e) => {
-                    if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                      update("customColor", e.target.value);
-                  }}
-                  className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                  style={{
-                    background: "rgba(2,6,23,0.9)",
-                    border: "1px solid rgba(51,65,85,0.8)",
-                  }}
-                  maxLength={7}
-                />
-              </div>
-              <div className="grid grid-cols-5 gap-1">
-                {PRESET_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => update("customColor", c)}
-                    className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                    style={{
-                      backgroundColor: c,
-                      borderColor:
-                        accent === c ? "white" : "rgba(51,65,85,0.5)",
-                    }}
-                  />
-                ))}
-              </div>
-              {customColor && (
-                <button
-                  onClick={() => update("customColor", undefined)}
-                  className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                  style={{
-                    color: "rgba(148,163,184,0.6)",
-                    borderColor: "rgba(51,65,85,0.5)",
-                  }}
-                >
-                  Reset
-                </button>
-              )}
-            </div>
+              Node Color
+            </span>
           </div>
-        </>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-10 h-10 rounded border-2 cursor-pointer"
+                style={{
+                  borderColor: `${accent}66`,
+                  backgroundColor: accent,
+                }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
+              ))}
+            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
-      {/* ── Handles ── */}
       <Handle
         type="target"
         position={Position.Top}

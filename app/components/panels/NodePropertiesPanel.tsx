@@ -9,6 +9,7 @@ import {
   ExternalLink,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   Check,
   Plus,
   Copy,
@@ -18,6 +19,8 @@ import {
   Shuffle,
   List,
   AlertTriangle,
+  ArrowLeftRight,
+  Zap,
 } from "lucide-react";
 import { useTelegram } from "@/lib/hooks/useTelegram";
 import { useWallet } from "@/lib/hooks/useWallet";
@@ -87,6 +90,86 @@ const WALLET_CHAINS = [
   { id: "optimism", label: "Optimism", color: "#FF0420" },
   { id: "polygon", label: "Polygon", color: "#8247E5" },
 ];
+
+// ── Swap-specific constants ───────────────────────────────────────────────────
+
+const TOKENS_BY_CHAIN: Record<string, string[]> = {
+  solana: [
+    "SOL",
+    "USDC",
+    "USDT",
+    "BONK",
+    "JTO",
+    "WIF",
+    "JUP",
+    "PYTH",
+    "RAY",
+    "ORCA",
+  ],
+  ethereum: ["ETH", "USDC", "USDT", "WBTC", "DAI", "WETH"],
+  arbitrum: ["ETH", "USDC", "USDT", "ARB", "WBTC", "GMX"],
+  base: ["ETH", "USDC", "WETH", "cbETH"],
+  optimism: ["ETH", "USDC", "USDT", "WBTC", "DAI"],
+  polygon: ["MATIC", "USDC", "USDT", "WBTC", "DAI"],
+};
+
+const SWAP_CHAINS = [
+  "solana",
+  "ethereum",
+  "arbitrum",
+  "base",
+  "optimism",
+  "polygon",
+];
+
+const DEX_BY_CHAIN: Record<string, string[]> = {
+  solana: ["Jupiter", "Orca", "Raydium"],
+  ethereum: ["1inch", "Paraswap", "Uniswap"],
+  arbitrum: ["1inch", "Paraswap", "Camelot"],
+  base: ["1inch", "Paraswap", "Aerodrome"],
+  optimism: ["1inch", "Paraswap", "Velodrome"],
+  polygon: ["1inch", "Paraswap", "QuickSwap"],
+};
+
+const TOKEN_COLORS: Record<string, string> = {
+  SOL: "#9945FF",
+  ETH: "#627EEA",
+  USDC: "#2775CA",
+  USDT: "#26A17B",
+  WBTC: "#F7931A",
+  ARB: "#28A0F0",
+  MATIC: "#8247E5",
+  JUP: "#C7F284",
+  BONK: "#F5A623",
+  WIF: "#E8823A",
+  JTO: "#4ECDC4",
+  PYTH: "#E6007A",
+  RAY: "#4A90D9",
+  ORCA: "#00C2FF",
+  GMX: "#00AFFA",
+  DAI: "#F5AC37",
+  WETH: "#627EEA",
+  cbETH: "#627EEA",
+};
+
+const SLIPPAGE_PRESETS = [0.1, 0.5, 1.0, 3.0];
+
+// ── Token badge ───────────────────────────────────────────────────────────────
+function TokenBadge({ token }: { token: string }) {
+  const color = TOKEN_COLORS[token] ?? "#64748b";
+  return (
+    <div
+      className="flex items-center gap-1 rounded-md font-mono font-bold px-1.5 py-0.5 text-[9px]"
+      style={{
+        background: `${color}22`,
+        border: `1px solid ${color}44`,
+        color,
+      }}
+    >
+      {token}
+    </div>
+  );
+}
 
 function shortAddr(addr: string) {
   if (!addr || addr.length < 8) return addr || "—";
@@ -198,6 +281,136 @@ function StyledCheckbox({
         {label}
       </span>
     </label>
+  );
+}
+
+// ── Time Picker — clean drum-roller ──────────────────────────────────────────
+function TimePickerInput({
+  value,
+  onChange,
+  accent,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  accent: string;
+}) {
+  const parts = value.split(":");
+  const hours = Math.min(23, Math.max(0, parseInt(parts[0] ?? "0", 10) || 0));
+  const minutes = Math.min(59, Math.max(0, parseInt(parts[1] ?? "0", 10) || 0));
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  const spinH = (dir: 1 | -1) => {
+    const next = (hours + dir + 24) % 24;
+    onChange(`${pad(next)}:${pad(minutes)}`);
+  };
+  const spinM = (dir: 1 | -1) => {
+    const next = (minutes + dir * 5 + 60) % 60;
+    onChange(`${pad(hours)}:${pad(next)}`);
+  };
+
+  const drumCol = (
+    val: number,
+    onUp: () => void,
+    onDown: () => void,
+    label: string,
+  ) => (
+    <div className="flex flex-col items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onUp}
+        className="w-8 h-6 flex items-center justify-center rounded-t cursor-pointer transition-all active:scale-95"
+        style={{
+          background: `${accent}18`,
+          border: `1px solid ${accent}25`,
+          borderBottom: "none",
+          color: `${accent}80`,
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background =
+            `${accent}30`;
+          (e.currentTarget as HTMLButtonElement).style.color = accent;
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background =
+            `${accent}18`;
+          (e.currentTarget as HTMLButtonElement).style.color = `${accent}80`;
+        }}
+      >
+        <ChevronUp className="w-3 h-3" />
+      </button>
+      <div
+        className="w-8 h-9 flex items-center justify-center font-mono font-bold select-none"
+        style={{
+          background: "rgba(2,6,23,0.9)",
+          border: `1px solid ${accent}35`,
+          color: accent,
+          fontSize: 17,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {pad(val)}
+      </div>
+      <button
+        type="button"
+        onClick={onDown}
+        className="w-8 h-6 flex items-center justify-center rounded-b cursor-pointer transition-all active:scale-95"
+        style={{
+          background: `${accent}18`,
+          border: `1px solid ${accent}25`,
+          borderTop: "none",
+          color: `${accent}80`,
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background =
+            `${accent}30`;
+          (e.currentTarget as HTMLButtonElement).style.color = accent;
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background =
+            `${accent}18`;
+          (e.currentTarget as HTMLButtonElement).style.color = `${accent}80`;
+        }}
+      >
+        <ChevronDown className="w-3 h-3" />
+      </button>
+      <span className="text-[7px] font-mono text-slate-600 uppercase tracking-widest mt-0.5">
+        {label}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="flex items-center gap-2">
+      {drumCol(
+        hours,
+        () => spinH(1),
+        () => spinH(-1),
+        "hr",
+      )}
+      <span
+        className="text-slate-500 font-mono font-bold text-lg mb-4 select-none"
+        style={{ lineHeight: 1 }}
+      >
+        :
+      </span>
+      {drumCol(
+        minutes,
+        () => spinM(1),
+        () => spinM(-1),
+        "min",
+      )}
+      <span
+        className="mb-4 text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded self-center"
+        style={{
+          color: `${accent}80`,
+          background: `${accent}12`,
+          border: `1px solid ${accent}20`,
+          marginBottom: "18px",
+        }}
+      >
+        UTC
+      </span>
+    </div>
   );
 }
 
@@ -1025,6 +1238,294 @@ function MultiWalletPanel({
   );
 }
 
+// ── Swap Panel ────────────────────────────────────────────────────────────────
+function SwapPanel({
+  data,
+  accent,
+  updateField,
+  updateNodeData,
+  nodeId,
+}: {
+  data: Record<string, unknown>;
+  accent: string;
+  updateField: (f: string, v: unknown) => void;
+  updateNodeData: (id: string, d: Record<string, unknown>) => void;
+  nodeId: string;
+}) {
+  const chain = str(data.chain, "solana");
+  const fromToken = str(data.fromToken, "SOL").toUpperCase();
+  const toToken = str(data.toToken, "USDC").toUpperCase();
+  const slippage = parseFloat(str(data.slippage, "0.5"));
+  const dex = str(data.dex, "auto");
+
+  const tokens = TOKENS_BY_CHAIN[chain] ?? TOKENS_BY_CHAIN.solana;
+  const dexOptions = ["auto", ...(DEX_BY_CHAIN[chain] ?? [])];
+
+  const [fromDropdown, setFromDropdown] = useState(false);
+  const [toDropdown, setToDropdown] = useState(false);
+
+  return (
+    <div className="space-y-3">
+      {/* Chain */}
+      <FieldGroup>
+        <FieldLabel>Chain</FieldLabel>
+        <div className="grid grid-cols-3 gap-1">
+          {SWAP_CHAINS.map((c) => (
+            <button
+              key={c}
+              onClick={() => {
+                const newTokens = TOKENS_BY_CHAIN[c] ?? [];
+                const newFrom = newTokens.includes(fromToken)
+                  ? fromToken
+                  : newTokens[0];
+                const newTo =
+                  newTokens.includes(toToken) && toToken !== newFrom
+                    ? toToken
+                    : (newTokens.find((t) => t !== newFrom) ??
+                      newTokens[1] ??
+                      newTokens[0]);
+                updateNodeData(nodeId, {
+                  chain: c,
+                  fromToken: newFrom,
+                  toToken: newTo,
+                });
+              }}
+              className="py-1.5 rounded-lg text-[8px] font-mono font-bold capitalize tracking-wider cursor-pointer transition-all"
+              style={
+                chain === c
+                  ? {
+                      background: `${accent}22`,
+                      color: accent,
+                      border: `1px solid ${accent}55`,
+                    }
+                  : {
+                      background: "rgba(255,255,255,0.02)",
+                      color: "rgba(148,163,184,0.5)",
+                      border: "1px solid rgba(51,65,85,0.8)",
+                    }
+              }
+            >
+              {c === "ethereum"
+                ? "ETH"
+                : c === "arbitrum"
+                  ? "ARB"
+                  : c === "optimism"
+                    ? "OP"
+                    : c.slice(0, 4)}
+            </button>
+          ))}
+        </div>
+      </FieldGroup>
+
+      {/* Token pair */}
+      <div className="grid grid-cols-[1fr,auto,1fr] gap-1.5 items-end">
+        {/* From token */}
+        <FieldGroup>
+          <FieldLabel>From</FieldLabel>
+          <div className="relative">
+            <button
+              onClick={() => {
+                setFromDropdown((v) => !v);
+                setToDropdown(false);
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer"
+              style={{
+                background: "rgba(2,6,23,0.9)",
+                border: `1px solid ${fromDropdown ? accent + "55" : "rgba(51,65,85,0.8)"}`,
+              }}
+            >
+              <TokenBadge token={fromToken} />
+              <ChevronDown className="w-3 h-3 text-slate-500" />
+            </button>
+            {fromDropdown && (
+              <div
+                className="absolute top-[calc(100%+4px)] left-0 right-0 rounded-lg overflow-hidden z-10"
+                style={{
+                  background: "rgba(2,6,23,0.98)",
+                  border: `1px solid ${accent}33`,
+                }}
+              >
+                {tokens
+                  .filter((t) => t !== toToken)
+                  .map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        updateField("fromToken", t);
+                        setFromDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-white/5 cursor-pointer"
+                    >
+                      <TokenBadge token={t} />
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </FieldGroup>
+
+        {/* Flip button */}
+        <button
+          onClick={() => {
+            updateField("fromToken", toToken);
+            updateField("toToken", fromToken);
+          }}
+          className="mb-0.5 w-7 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+          style={{
+            background: `${accent}10`,
+            border: `1px solid ${accent}22`,
+            color: accent,
+          }}
+          title="Flip tokens"
+        >
+          <ArrowLeftRight className="w-3 h-3" />
+        </button>
+
+        {/* To token */}
+        <FieldGroup>
+          <FieldLabel>To</FieldLabel>
+          <div className="relative">
+            <button
+              onClick={() => {
+                setToDropdown((v) => !v);
+                setFromDropdown(false);
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer"
+              style={{
+                background: "rgba(2,6,23,0.9)",
+                border: `1px solid ${toDropdown ? accent + "55" : "rgba(51,65,85,0.8)"}`,
+              }}
+            >
+              <TokenBadge token={toToken} />
+              <ChevronDown className="w-3 h-3 text-slate-500" />
+            </button>
+            {toDropdown && (
+              <div
+                className="absolute top-[calc(100%+4px)] left-0 right-0 rounded-lg overflow-hidden z-10"
+                style={{
+                  background: "rgba(2,6,23,0.98)",
+                  border: `1px solid ${accent}33`,
+                }}
+              >
+                {tokens
+                  .filter((t) => t !== fromToken)
+                  .map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        updateField("toToken", t);
+                        setToDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-white/5 cursor-pointer"
+                    >
+                      <TokenBadge token={t} />
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </FieldGroup>
+      </div>
+
+      {/* Amount */}
+      <FieldGroup>
+        <FieldLabel>Amount ({fromToken})</FieldLabel>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={str(data.amount, "1")}
+          onChange={(e) => {
+            if (/^\d*\.?\d*$/.test(e.target.value))
+              updateField("amount", e.target.value);
+          }}
+          placeholder="1"
+          className="w-full h-8 px-3 rounded-md text-[11px] font-mono text-cyan-100 focus:outline-none"
+          style={{
+            background: "rgba(2,6,23,0.9)",
+            border: "1px solid rgba(51,65,85,0.8)",
+          }}
+          onFocus={(e) => (e.target.style.borderColor = accent)}
+          onBlur={(e) => (e.target.style.borderColor = "rgba(51,65,85,0.8)")}
+        />
+      </FieldGroup>
+
+      {/* Slippage */}
+      <FieldGroup>
+        <FieldLabel>Slippage Tolerance</FieldLabel>
+        <div className="grid grid-cols-4 gap-1">
+          {SLIPPAGE_PRESETS.map((s) => (
+            <button
+              key={s}
+              onClick={() => updateField("slippage", s)}
+              className="py-1.5 rounded-lg text-[8px] font-mono font-bold tracking-wider cursor-pointer transition-all"
+              style={
+                slippage === s
+                  ? {
+                      background: `${accent}22`,
+                      color: accent,
+                      border: `1px solid ${accent}55`,
+                    }
+                  : {
+                      background: "rgba(255,255,255,0.02)",
+                      color: "rgba(148,163,184,0.5)",
+                      border: "1px solid rgba(51,65,85,0.8)",
+                    }
+              }
+            >
+              {s}%
+            </button>
+          ))}
+        </div>
+      </FieldGroup>
+
+      {/* DEX */}
+      <FieldGroup>
+        <FieldLabel>DEX / Aggregator</FieldLabel>
+        <div className="space-y-1">
+          {dexOptions.map((d) => (
+            <button
+              key={d}
+              onClick={() => updateField("dex", d)}
+              className="w-full py-1.5 px-2.5 rounded-lg text-left cursor-pointer transition-all"
+              style={
+                dex === d
+                  ? {
+                      background: `${accent}18`,
+                      border: `1px solid ${accent}44`,
+                    }
+                  : {
+                      background: "rgba(255,255,255,0.02)",
+                      border: "1px solid rgba(51,65,85,0.6)",
+                    }
+              }
+            >
+              <span
+                className="text-[9px] font-mono font-bold"
+                style={{ color: dex === d ? accent : "rgba(148,163,184,0.6)" }}
+              >
+                {d === "auto" ? "Auto (Best Route)" : d}
+              </span>
+            </button>
+          ))}
+        </div>
+      </FieldGroup>
+
+      <div
+        className="rounded-lg px-3 py-2"
+        style={{
+          background: `${accent}06`,
+          border: `1px solid ${accent}15`,
+        }}
+      >
+        <p className="text-[8px] font-mono text-slate-500 leading-relaxed">
+          // Live quote fetched every 15s · configure on node for real-time
+          preview
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export function NodePropertiesPanel() {
   const selectedNode = useFlowStore((s) =>
@@ -1097,12 +1598,10 @@ export function NodePropertiesPanel() {
                   schedulePreset === "Weekly") && (
                   <FieldGroup>
                     <FieldLabel>Time (UTC)</FieldLabel>
-                    <StyledInput
-                      type="time"
+                    <TimePickerInput
                       value={str(selectedNode.data.scheduleTime, "03:00")}
-                      onChange={(e) =>
-                        updateField("scheduleTime", e.target.value)
-                      }
+                      onChange={(v) => updateField("scheduleTime", v)}
+                      accent={accent}
                     />
                   </FieldGroup>
                 )}
@@ -1206,61 +1705,13 @@ export function NodePropertiesPanel() {
 
       case "swap":
         return (
-          <>
-            <div className="grid grid-cols-2 gap-2">
-              <FieldGroup>
-                <FieldLabel>From Token</FieldLabel>
-                <StyledInput
-                  placeholder="USDC"
-                  value={str(selectedNode.data.fromToken)}
-                  onChange={(e) => updateField("fromToken", e.target.value)}
-                />
-              </FieldGroup>
-              <FieldGroup>
-                <FieldLabel>To Token</FieldLabel>
-                <StyledInput
-                  placeholder="SOL"
-                  value={str(selectedNode.data.toToken)}
-                  onChange={(e) => updateField("toToken", e.target.value)}
-                />
-              </FieldGroup>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <FieldGroup>
-                <FieldLabel>Amount</FieldLabel>
-                <StyledInput
-                  type="number"
-                  placeholder="10"
-                  value={str(selectedNode.data.amount)}
-                  onChange={(e) => updateField("amount", e.target.value)}
-                />
-              </FieldGroup>
-              <FieldGroup>
-                <FieldLabel>Slippage %</FieldLabel>
-                <StyledInput
-                  type="number"
-                  step="0.1"
-                  placeholder="1"
-                  value={str(selectedNode.data.slippage)}
-                  onChange={(e) => updateField("slippage", e.target.value)}
-                />
-              </FieldGroup>
-            </div>
-            <FieldGroup>
-              <FieldLabel>DEX</FieldLabel>
-              <StyledSelect
-                accent={accent}
-                value={str(selectedNode.data.dex, "jupiter")}
-                onChange={(v) => updateField("dex", v)}
-                options={[
-                  { value: "jupiter", label: "Jupiter" },
-                  { value: "uniswap", label: "Uniswap" },
-                  { value: "raydium", label: "Raydium" },
-                  { value: "pancakeswap", label: "PancakeSwap" },
-                ]}
-              />
-            </FieldGroup>
-          </>
+          <SwapPanel
+            nodeId={selectedNode.id}
+            data={selectedNode.data as Record<string, unknown>}
+            accent={accent}
+            updateField={updateField}
+            updateNodeData={updateNodeData}
+          />
         );
 
       case "bridge": {
@@ -1813,7 +2264,6 @@ export function NodePropertiesPanel() {
       case "discord": {
         const taskType = str(selectedNode.data.taskType, "join");
         const hasToken = str(selectedNode.data.discordToken).length > 10;
-        // Which fields each task type needs
         const needsServer = taskType === "join";
         const needsChannel =
           taskType === "message" || taskType === "react" || taskType === "role";
@@ -1823,7 +2273,6 @@ export function NodePropertiesPanel() {
 
         return (
           <>
-            {/* Discord token — required for all tasks */}
             <FieldGroup>
               <FieldLabel>Discord Token</FieldLabel>
               <div className="relative">
@@ -1849,8 +2298,6 @@ export function NodePropertiesPanel() {
                 </p>
               </div>
             </FieldGroup>
-
-            {/* Task type */}
             <FieldGroup>
               <FieldLabel>Task Type</FieldLabel>
               <StyledSelect
@@ -1865,8 +2312,6 @@ export function NodePropertiesPanel() {
                 ]}
               />
             </FieldGroup>
-
-            {/* Server invite — only for join */}
             {needsServer && (
               <FieldGroup>
                 <FieldLabel>Server Invite</FieldLabel>
@@ -1877,8 +2322,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
-
-            {/* Channel ID — for message / react / role */}
             {needsChannel && (
               <FieldGroup>
                 <FieldLabel>Channel ID</FieldLabel>
@@ -1890,8 +2333,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
-
-            {/* Message text — for send message */}
             {needsMessage && (
               <FieldGroup>
                 <FieldLabel>Message</FieldLabel>
@@ -1903,8 +2344,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
-
-            {/* Message ID — for react / role */}
             {needsMessageId && (
               <FieldGroup>
                 <FieldLabel>Message ID</FieldLabel>
@@ -1920,8 +2359,6 @@ export function NodePropertiesPanel() {
                 </div>
               </FieldGroup>
             )}
-
-            {/* Emoji — for react / role */}
             {needsEmoji && (
               <FieldGroup>
                 <FieldLabel>Emoji</FieldLabel>
@@ -1932,8 +2369,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
-
-            {/* Status indicator */}
             <div
               className="rounded-lg px-3 py-2 flex items-center justify-between"
               style={{
@@ -1960,18 +2395,12 @@ export function NodePropertiesPanel() {
         );
       }
 
-      // ─────────────────────────────────────────────────────────────────────────────
-      // DROP THIS INTO NodePropertiesPanel.tsx
-      // Replace the entire `case "galxe":` block (currently ~13 lines) with this.
-      // ─────────────────────────────────────────────────────────────────────────────
-
       case "galxe": {
         const hasToken = str(selectedNode.data.galxeToken ?? "").length > 10;
         const hasWallet =
           str(selectedNode.data.walletPublicKey ?? "").length > 10;
         return (
           <>
-            {/* Galxe access token — required for ALL actions */}
             <FieldGroup>
               <FieldLabel>Galxe Access Token</FieldLabel>
               <div className="relative">
@@ -1997,8 +2426,6 @@ export function NodePropertiesPanel() {
                 </p>
               </div>
             </FieldGroup>
-
-            {/* Wallet address — read-only, set by WalletConnectNode upstream */}
             <FieldGroup>
               <FieldLabel>Wallet Address</FieldLabel>
               <div
@@ -2025,7 +2452,6 @@ export function NodePropertiesPanel() {
                 )}
               </div>
             </FieldGroup>
-
             <FieldGroup>
               <FieldLabel>Campaign Name</FieldLabel>
               <StyledInput
@@ -2034,7 +2460,6 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("campaignName", e.target.value)}
               />
             </FieldGroup>
-
             <FieldGroup>
               <FieldLabel>Campaign URL</FieldLabel>
               <StyledInput
@@ -2046,7 +2471,6 @@ export function NodePropertiesPanel() {
                 // Full campaign URL — alias is parsed automatically
               </div>
             </FieldGroup>
-
             <FieldGroup>
               <FieldLabel>Action</FieldLabel>
               <StyledSelect
@@ -2060,8 +2484,6 @@ export function NodePropertiesPanel() {
                 ]}
               />
             </FieldGroup>
-
-            {/* Status indicator */}
             <div
               className="rounded-lg px-3 py-2 flex items-center justify-between"
               style={{
@@ -2088,8 +2510,6 @@ export function NodePropertiesPanel() {
         );
       }
 
-      // ── VOLUME FARMER ─────────────────────────────────────────────────────────
-      // All fields wired to exactly what VolumeFarmerNode.tsx reads from data
       case "volumeFarmer": {
         const vfTokenPair = str(selectedNode.data.tokenPair, "sol-usdc-sol");
         const vfWallet = str(
@@ -2101,7 +2521,6 @@ export function NodePropertiesPanel() {
 
         return (
           <>
-            {/* Wallet status — read-only, populated by WalletConnectNode upstream */}
             <FieldGroup>
               <FieldLabel>Connected Wallet</FieldLabel>
               <div
@@ -2133,8 +2552,6 @@ export function NodePropertiesPanel() {
                 )}
               </div>
             </FieldGroup>
-
-            {/* Token pair */}
             <FieldGroup>
               <FieldLabel>Token Pair</FieldLabel>
               <StyledSelect
@@ -2154,8 +2571,6 @@ export function NodePropertiesPanel() {
                 ]}
               />
             </FieldGroup>
-
-            {/* Custom mint fields */}
             {vfIsCustom && (
               <>
                 <FieldGroup>
@@ -2182,8 +2597,6 @@ export function NodePropertiesPanel() {
                 </FieldGroup>
               </>
             )}
-
-            {/* Swap count / amount / target */}
             <div className="grid grid-cols-3 gap-2">
               <FieldGroup>
                 <FieldLabel>Swaps</FieldLabel>
@@ -2216,8 +2629,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             </div>
-
-            {/* DEX + Chain */}
             <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
                 <FieldLabel>DEX</FieldLabel>
@@ -2250,8 +2661,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             </div>
-
-            {/* Slippage + Delay */}
             <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
                 <FieldLabel>Slippage</FieldLabel>
@@ -2286,7 +2695,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             </div>
-
             <StyledCheckbox
               id="randomize-vol"
               checked={bool(selectedNode.data.randomizeAmounts)}
@@ -2295,7 +2703,6 @@ export function NodePropertiesPanel() {
               }
               label="Randomize amounts (±20% variance)"
             />
-
             <div
               className="rounded-lg px-3 py-2"
               style={{
@@ -2615,7 +3022,7 @@ export function NodePropertiesPanel() {
           className="w-full h-8 rounded flex items-center justify-center gap-2 text-xs font-mono text-red-400/60 border border-red-500/20 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/5 transition-all duration-150"
         >
           <Trash2 className="w-3 h-3" />
-          delete_node()
+          delete
         </button>
       </div>
     </div>

@@ -37,7 +37,6 @@ const PRESET_COLORS = [
 
 type FarmStatus = "idle" | "running" | "done" | "error" | "stopped";
 
-// Token pair options
 const TOKEN_PAIRS: Record<
   string,
   { label: string; input: string; output: string; roundTrip: boolean }
@@ -83,7 +82,6 @@ const TOKEN_PAIRS: Record<
 export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
-  // ── data from NodePropertiesPanel ─────────────────────────────────────────
   const swapCount = Math.max(1, Number(data.swapCount ?? 5));
   const swapAmount = Math.max(0.01, Number(data.swapAmount ?? 5));
   const targetVolume = Number(data.targetVolume ?? 0);
@@ -97,12 +95,10 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
   const customOutput = String(data.customOutputMint ?? "");
   const customColor = data.customColor as string | undefined;
   const accent = customColor ?? "#f59e0b";
-  // Wallet public key — set by WalletConnectNode or flow runner via data.walletPublicKey
   const walletPublicKey = String(
     data.walletPublicKey ?? data.connectedWallet ?? "",
   );
 
-  // ── local state ───────────────────────────────────────────────────────────
   const [showPopover, setShowPopover] = useState(false);
   const [farmStatus, setFarmStatus] = useState<FarmStatus>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -116,6 +112,20 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
   const abortRef = useRef(false);
   const isRunningRef = useRef(false);
 
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleMouseDown, true);
+    return () => window.removeEventListener("mousedown", handleMouseDown, true);
+  }, []);
+
   const update = (field: string, val: unknown) =>
     updateNodeData(id, { [field]: val });
 
@@ -124,19 +134,12 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
     setLastTxSig(data.lastTxSig ? String(data.lastTxSig) : null);
   }, [data.lastRun, data.lastTxSig]);
 
-  // Only sync from node data when not actively running — prevents racing with live loop
   useEffect(() => {
     if (!isRunningRef.current) {
       setSwapsDone(Number(data.swapsDone ?? 0));
       setVolumeDone(Number(data.volumeDone ?? 0));
     }
   }, [data.swapsDone, data.volumeDone]);
-
-  useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -146,7 +149,6 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
     };
   }, []);
 
-  // ── derived ───────────────────────────────────────────────────────────────
   const totalVolume = swapCount * swapAmount;
   const progressPct =
     swapCount > 0 ? Math.min((swapsDone / swapCount) * 100, 100) : 0;
@@ -194,7 +196,6 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
     polygon: "Polygon",
   };
 
-  // ── execution ─────────────────────────────────────────────────────────────
   const handleRun = useCallback(async () => {
     if (farmStatus === "running") return;
 
@@ -247,7 +248,6 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
             : `Swap ${i + 1}/${swapCount}: $${effectiveAmount} — waiting wallet…`,
         );
 
-        // ── REAL on-chain swap via Jupiter Aggregator ──────────────────────
         let result;
         if (isRoundTrip) {
           result = await executeRoundTripSwap({
@@ -264,9 +264,7 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
             walletPublicKey,
           });
         }
-        // ──────────────────────────────────────────────────────────────────
 
-        // Check abort AFTER the swap returns — user may have stopped while tx was in flight
         if (abortRef.current) break;
 
         completed++;
@@ -283,7 +281,6 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
           lastTxSig: result.txSignature,
         });
 
-        // Delay between swaps with natural jitter — not robotic back-to-back
         if (i < swapCount - 1 && !abortRef.current) {
           const jitter = Math.floor(Math.random() * 500);
           const waitSec = ((delayMs + jitter) / 1000).toFixed(1);
@@ -355,7 +352,6 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
     setTimeout(() => handleRun(), 50);
   }, [handleRun]);
 
-  // ── status config ─────────────────────────────────────────────────────────
   const statusConfig: Record<
     FarmStatus,
     { color: string; label: string; icon: React.ReactNode }
@@ -402,7 +398,7 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
         backdropFilter: "blur(20px)",
       }}
     >
-      {/* ── Header ── */}
+      {/* Header */}
       <div
         className="px-3 py-2.5 rounded-t-xl flex items-center justify-between select-none"
         style={{
@@ -431,6 +427,7 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -452,7 +449,7 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
         }}
       />
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="px-3 py-3 space-y-2 select-none">
         {/* Wallet indicator */}
         <div
@@ -611,7 +608,6 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
                 </span>
               )}
             </div>
-            {/* Solscan tx link */}
             {lastTxSig && (
               <button
                 onClick={(e) => {
@@ -702,96 +698,90 @@ export const VolumeFarmerNode = memo(({ data, selected, id }: NodeProps) => {
         )}
       </div>
 
-      {/* ── Popover ── */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
+            className="h-px w-full"
+            style={{
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
+            }}
           />
           <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="px-2 py-1.5 border-b"
+            style={{ borderColor: `${accent}15` }}
           >
-            <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-            <div
-              className="px-2 py-1.5 border-b"
-              style={{ borderColor: `${accent}15` }}
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
             >
-              <span
-                className="text-[9px] font-mono font-bold uppercase tracking-widest"
-                style={{ color: accent }}
-              >
-                Node Color
-              </span>
-            </div>
-            <div className="p-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={accent}
-                  onChange={(e) => update("customColor", e.target.value)}
-                  className="w-10 h-10 rounded border-2 cursor-pointer"
-                  style={{
-                    borderColor: `${accent}66`,
-                    backgroundColor: accent,
-                  }}
-                />
-                <input
-                  type="text"
-                  value={accent.toUpperCase()}
-                  onChange={(e) => {
-                    if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                      update("customColor", e.target.value);
-                  }}
-                  className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                  style={{
-                    background: "rgba(2,6,23,0.9)",
-                    border: "1px solid rgba(51,65,85,0.8)",
-                  }}
-                  maxLength={7}
-                />
-              </div>
-              <div className="grid grid-cols-5 gap-1">
-                {PRESET_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => update("customColor", c)}
-                    className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                    style={{
-                      backgroundColor: c,
-                      borderColor:
-                        accent === c ? "white" : "rgba(51,65,85,0.5)",
-                    }}
-                  />
-                ))}
-              </div>
-              {customColor && (
-                <button
-                  onClick={() => update("customColor", undefined)}
-                  className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                  style={{
-                    color: "rgba(148,163,184,0.6)",
-                    borderColor: "rgba(51,65,85,0.5)",
-                  }}
-                >
-                  Reset
-                </button>
-              )}
-            </div>
+              Node Color
+            </span>
           </div>
-        </>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-10 h-10 rounded border-2 cursor-pointer"
+                style={{
+                  borderColor: `${accent}66`,
+                  backgroundColor: accent,
+                }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
+              ))}
+            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       <Handle

@@ -97,22 +97,27 @@ export const TwitterTaskNode = memo(({ data, selected, id }: NodeProps) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<string | null>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   const update = (field: string, val: unknown) =>
     updateNodeData(id, { [field]: val });
 
-  // FIX: sync lastRun from node data (survives re-renders from external changes)
   useEffect(() => {
     setLastRun(data.lastRun ? String(data.lastRun) : null);
   }, [data.lastRun]);
 
   useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleMouseDown, true);
+    return () => window.removeEventListener("mousedown", handleMouseDown, true);
   }, []);
 
-  // FIX: cleanup reset timer on unmount to prevent memory leak + setState on unmounted component
   useEffect(() => {
     return () => {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -122,10 +127,6 @@ export const TwitterTaskNode = memo(({ data, selected, id }: NodeProps) => {
   const taskMeta = TASK_TYPES.find((t) => t.id === taskType) ?? TASK_TYPES[0];
   const TaskIcon = taskMeta.icon;
 
-  // FIX: canRun checks requirements per task type, not a blanket !target check
-  // - follow/like/repost: needs target only
-  // - quote: needs both target AND text
-  // - tweet (post): needs text only, no target
   const canRun =
     status !== "running" &&
     (!taskMeta.needsTarget || target.trim().length > 0) &&
@@ -170,16 +171,13 @@ export const TwitterTaskNode = memo(({ data, selected, id }: NodeProps) => {
         );
       }
 
-      // ── Your X API / automation call goes here ──────────────────────────
       await new Promise((res) => setTimeout(res, 1200));
-      // ────────────────────────────────────────────────────────────────────
 
       const now = new Date().toLocaleTimeString();
       setLastRun(now);
       updateNodeData(id, { lastRun: now, lastStatus: "done" });
       setStatus("done");
 
-      // FIX: store ref so cleanup can cancel this if component unmounts
       resetTimerRef.current = setTimeout(() => {
         setStatus("idle");
         resetTimerRef.current = null;
@@ -219,7 +217,6 @@ export const TwitterTaskNode = memo(({ data, selected, id }: NodeProps) => {
   };
   const sc = statusConfig[status];
 
-  // What's missing — for the hint below the button
   const missingHint =
     !canRun && status === "idle"
       ? taskMeta.needsTarget &&
@@ -277,6 +274,7 @@ export const TwitterTaskNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -430,94 +428,88 @@ export const TwitterTaskNode = memo(({ data, selected, id }: NodeProps) => {
 
       {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
+            className="h-px w-full"
+            style={{
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
+            }}
           />
           <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="px-2 py-1.5 border-b"
+            style={{ borderColor: `${accent}15` }}
           >
-            <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-            <div
-              className="px-2 py-1.5 border-b"
-              style={{ borderColor: `${accent}15` }}
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
             >
-              <span
-                className="text-[9px] font-mono font-bold uppercase tracking-widest"
-                style={{ color: accent }}
-              >
-                Node Color
-              </span>
-            </div>
-            <div className="p-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={accent}
-                  onChange={(e) => update("customColor", e.target.value)}
-                  className="w-10 h-10 rounded border-2 cursor-pointer"
-                  style={{
-                    borderColor: `${accent}66`,
-                    backgroundColor: accent,
-                  }}
-                />
-                <input
-                  type="text"
-                  value={accent.toUpperCase()}
-                  onChange={(e) => {
-                    if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                      update("customColor", e.target.value);
-                  }}
-                  className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                  style={{
-                    background: "rgba(2,6,23,0.9)",
-                    border: "1px solid rgba(51,65,85,0.8)",
-                  }}
-                  maxLength={7}
-                />
-              </div>
-              <div className="grid grid-cols-5 gap-1">
-                {PRESET_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => update("customColor", c)}
-                    className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                    style={{
-                      backgroundColor: c,
-                      borderColor:
-                        accent === c ? "white" : "rgba(51,65,85,0.5)",
-                    }}
-                  />
-                ))}
-              </div>
-              {customColor && (
-                <button
-                  onClick={() => update("customColor", undefined)}
-                  className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                  style={{
-                    color: "rgba(148,163,184,0.6)",
-                    borderColor: "rgba(51,65,85,0.5)",
-                  }}
-                >
-                  Reset
-                </button>
-              )}
-            </div>
+              Node Color
+            </span>
           </div>
-        </>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-10 h-10 rounded border-2 cursor-pointer"
+                style={{
+                  borderColor: `${accent}66`,
+                  backgroundColor: accent,
+                }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
+              ))}
+            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       <Handle

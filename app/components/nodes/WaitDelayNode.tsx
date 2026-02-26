@@ -55,13 +55,19 @@ export const WaitDelayNode = memo(({ data, selected, id }: NodeProps) => {
   const customColor = data.customColor as string | undefined;
   const accent = customColor ?? "#94a3b8";
 
-  const [tab, setTab] = useState<"config" | "color">("config");
   const [showPopover, setShowPopover] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleMouseDown, true);
+    return () => window.removeEventListener("mousedown", handleMouseDown, true);
   }, []);
 
   const update = (field: string, val: unknown) =>
@@ -117,6 +123,7 @@ export const WaitDelayNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -140,7 +147,6 @@ export const WaitDelayNode = memo(({ data, selected, id }: NodeProps) => {
 
       {/* Body */}
       <div className="px-3 py-3 space-y-2 select-none">
-        {/* Duration display */}
         <div
           className="rounded-lg px-3 py-2.5 flex items-center gap-3"
           style={{
@@ -178,7 +184,6 @@ export const WaitDelayNode = memo(({ data, selected, id }: NodeProps) => {
           )}
         </div>
 
-        {/* Range display when randomize is on */}
         {randomize && minSeconds !== null && maxSeconds !== null && (
           <div
             className="rounded-lg px-3 py-1.5 flex items-center gap-2"
@@ -199,7 +204,6 @@ export const WaitDelayNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         )}
 
-        {/* Unit pills */}
         <div className="grid grid-cols-4 gap-1">
           {UNITS.map((u) => (
             <div
@@ -231,245 +235,87 @@ export const WaitDelayNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
-      {/* Popover */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
+            className="h-px w-full"
+            style={{
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
+            }}
           />
           <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-56 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="px-2 py-1.5 border-b"
+            style={{ borderColor: `${accent}15` }}
           >
-            <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-            <div
-              className="flex border-b"
-              style={{ borderColor: `${accent}15` }}
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
             >
-              {(["config", "color"] as const).map((t) => (
+              Node Color
+            </span>
+          </div>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-10 h-10 rounded border-2 cursor-pointer"
+                style={{ borderColor: `${accent}66`, backgroundColor: accent }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-2 text-[9px] font-mono font-bold uppercase tracking-widest cursor-pointer transition-all"
-                  style={
-                    tab === t
-                      ? { color: accent, borderBottom: `1px solid ${accent}` }
-                      : { color: "rgba(100,116,139,0.6)" }
-                  }
-                >
-                  {t}
-                </button>
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
               ))}
             </div>
-
-            <div className="p-3 space-y-3">
-              {tab === "config" && (
-                <>
-                  {/* Duration */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Duration
-                    </div>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={String(data.duration ?? "60")}
-                      onChange={(e) => {
-                        if (/^\d*$/.test(e.target.value))
-                          update("duration", e.target.value);
-                      }}
-                      placeholder="60"
-                      className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = accent)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                      }
-                    />
-                  </div>
-
-                  {/* Unit */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Unit
-                    </div>
-                    <div className="grid grid-cols-2 gap-1">
-                      {UNITS.map((u) => (
-                        <button
-                          key={u}
-                          onClick={() => update("unit", u)}
-                          className="py-1.5 rounded-lg text-[8px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all"
-                          style={
-                            unit === u
-                              ? {
-                                  background: `${accent}22`,
-                                  color: accent,
-                                  border: `1px solid ${accent}55`,
-                                }
-                              : {
-                                  background: "rgba(255,255,255,0.03)",
-                                  color: "rgba(148,163,184,0.5)",
-                                  border: "1px solid rgba(51,65,85,0.8)",
-                                }
-                          }
-                        >
-                          {u}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Randomize toggle */}
-                  <button
-                    onClick={() => update("randomize", !randomize)}
-                    className="w-full py-2 px-2.5 rounded-lg text-left cursor-pointer transition-all flex items-center justify-between"
-                    style={
-                      randomize
-                        ? {
-                            background: `${accent}18`,
-                            border: `1px solid ${accent}44`,
-                          }
-                        : {
-                            background: "rgba(255,255,255,0.02)",
-                            border: "1px solid rgba(51,65,85,0.6)",
-                          }
-                    }
-                  >
-                    <div>
-                      <div
-                        className="text-[9px] font-mono font-bold"
-                        style={{
-                          color: randomize ? accent : "rgba(148,163,184,0.6)",
-                        }}
-                      >
-                        Random Variance
-                      </div>
-                      <div className="text-[8px] font-mono text-slate-600">
-                        adds human-like timing
-                      </div>
-                    </div>
-                    <div
-                      className="w-7 h-4 rounded-full transition-all relative shrink-0"
-                      style={{
-                        background: randomize ? accent : "rgba(51,65,85,0.8)",
-                      }}
-                    >
-                      <div
-                        className="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all"
-                        style={{
-                          left: randomize ? "calc(100% - 14px)" : "2px",
-                        }}
-                      />
-                    </div>
-                  </button>
-
-                  {/* Variance % */}
-                  {randomize && (
-                    <div className="space-y-1.5">
-                      <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                        Variance %
-                      </div>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={String(data.randomRange ?? "10")}
-                        onChange={(e) => {
-                          if (/^\d*$/.test(e.target.value))
-                            update("randomRange", e.target.value);
-                        }}
-                        placeholder="10"
-                        className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                        style={{
-                          background: "rgba(2,6,23,0.9)",
-                          border: "1px solid rgba(51,65,85,0.8)",
-                        }}
-                        onFocus={(e) => (e.target.style.borderColor = accent)}
-                        onBlur={(e) =>
-                          (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                        }
-                      />
-                      <div className="text-[7px] font-mono text-slate-600">
-                        actual: {minSeconds}s – {maxSeconds}s
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {tab === "color" && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(e) => update("customColor", e.target.value)}
-                      className="w-10 h-10 rounded border-2 cursor-pointer"
-                      style={{
-                        borderColor: `${accent}66`,
-                        backgroundColor: accent,
-                      }}
-                    />
-                    <input
-                      type="text"
-                      value={accent.toUpperCase()}
-                      onChange={(e) => {
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                          update("customColor", e.target.value);
-                      }}
-                      className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      maxLength={7}
-                    />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {PRESET_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => update("customColor", c)}
-                        className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                        style={{
-                          backgroundColor: c,
-                          borderColor:
-                            accent === c ? "white" : "rgba(51,65,85,0.5)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {customColor && (
-                    <button
-                      onClick={() => update("customColor", undefined)}
-                      className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                      style={{
-                        color: "rgba(148,163,184,0.6)",
-                        borderColor: "rgba(51,65,85,0.5)",
-                      }}
-                    >
-                      Reset
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
       <Handle

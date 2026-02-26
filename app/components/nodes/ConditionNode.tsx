@@ -15,7 +15,6 @@ import { useFlowStore } from "@/lib/hooks/useFlowStore";
 
 // ── Fetchers ─────────────────────────────────────────────────────────────────
 
-// Price via CoinGecko — browser-friendly, has CORS headers
 async function fetchPrice(token: string): Promise<number | null> {
   try {
     const id =
@@ -39,21 +38,18 @@ async function fetchPrice(token: string): Promise<number | null> {
   }
 }
 
-// Solana priority fees via Next.js API proxy (no CORS issues)
 async function fetchSolanaGas(): Promise<number | null> {
   try {
     const res = await fetch("/api/solana-fees?type=fees");
     if (!res.ok) return null;
     const data = await res.json();
     if (data.error) return null;
-    // Return medium (p50) microlamports
     return typeof data.medium === "number" ? data.medium : null;
   } catch {
     return null;
   }
 }
 
-// Wallet SOL balance via Next.js API proxy
 async function fetchWalletBalance(address: string): Promise<number | null> {
   if (!address || (!address.startsWith("0x") && address.length < 32))
     return null;
@@ -70,7 +66,6 @@ async function fetchWalletBalance(address: string): Promise<number | null> {
   }
 }
 
-// Safe expression evaluator — no eval(), uses Function with sandboxed context
 function evaluateCustomExpression(
   expression: string,
   context: Record<string, number>,
@@ -79,7 +74,6 @@ function evaluateCustomExpression(
   try {
     const keys = Object.keys(context);
     const values = Object.values(context);
-    // Replace variable names in expression with context values
     let safeExpr = expression;
     for (const key of keys) {
       safeExpr = safeExpr.replace(
@@ -87,7 +81,6 @@ function evaluateCustomExpression(
         String(context[key]),
       );
     }
-    // Only allow safe characters: numbers, operators, parens, spaces, dots
     if (!/^[\d\s+\-*/().<>=!&|.]+$/.test(safeExpr)) return null;
     // eslint-disable-next-line no-new-func
     const fn = new Function(...keys, `"use strict"; return !!(${expression});`);
@@ -149,12 +142,29 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
   const customColor = data.customColor as string | undefined;
   const accent = customColor ?? "#eab308";
 
-  const [tab, setTab] = useState<"config" | "color">("config");
   const [showPopover, setShowPopover] = useState(false);
   const [liveValue, setLiveValue] = useState<number | null>(null);
   const [result, setResult] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!showPopover) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (
+        popoverRef.current?.contains(target) ||
+        buttonRef.current?.contains(target)
+      )
+        return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleClick, true);
+    return () => window.removeEventListener("mousedown", handleClick, true);
+  }, [showPopover]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const evaluate = useCallback(async () => {
@@ -168,7 +178,6 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
           setLastUpdated(new Date().toLocaleTimeString());
         }
       } else if (conditionType === "gas") {
-        // Solana microlamports, not EVM gwei
         const gas = await fetchSolanaGas();
         setLiveValue(gas);
         if (gas !== null) {
@@ -190,7 +199,7 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
         const context: Record<string, number> = {};
         if (price !== null) context.price = price;
         if (gas !== null) context.gas = gas;
-        context.balance = 0; // placeholder until wallet connected at runtime
+        context.balance = 0;
         const exprResult = evaluateCustomExpression(expression, context);
         setLiveValue(null);
         setResult(exprResult);
@@ -198,7 +207,7 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
           setLastUpdated(new Date().toLocaleTimeString());
       }
     } catch {
-      // silently fail — keep last known values
+      // silently fail
     }
     setLoading(false);
   }, [conditionType, token, operator, threshold, walletAddress, expression]);
@@ -211,16 +220,9 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
     };
   }, [evaluate]);
 
-  useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
-  }, []);
-
   const update = (field: string, val: unknown) =>
     updateNodeData(id, { [field]: val });
 
-  // Gas label — Solana microlamports not gwei
   const gasUnit = "μ◎";
   const valueUnit =
     conditionType === "price"
@@ -295,6 +297,7 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -318,7 +321,6 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
 
       {/* Body */}
       <div className="px-3 py-3 space-y-2 select-none">
-        {/* Condition summary */}
         <div
           className="rounded-lg px-3 py-2"
           style={{
@@ -337,7 +339,6 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
 
-        {/* Live value + result */}
         <div
           className="rounded-lg px-3 py-2 flex items-center justify-between"
           style={{
@@ -392,7 +393,6 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
 
-        {/* Balance type — no address warning */}
         {conditionType === "balance" && !walletAddress && (
           <div
             className="rounded-lg px-3 py-1.5 flex items-center gap-2"
@@ -413,7 +413,6 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
-      {/* True/False handle labels */}
       <div className="flex justify-between px-3 pb-2 select-none">
         <span className="text-[8px] font-mono text-emerald-500 font-bold">
           TRUE
@@ -423,306 +422,87 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
         </span>
       </div>
 
-      {/* Popover */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-56 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
-          />
-          <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-60 rounded-xl overflow-hidden shadow-2xl"
+            className="h-px w-full"
             style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
             }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          />
+          <div className="p-3 space-y-3">
             <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-            <div
-              className="flex border-b"
-              style={{ borderColor: `${accent}15` }}
+              className="text-[8px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: `${accent}80` }}
             >
-              {(["config", "color"] as const).map((t) => (
+              Node Color
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-9 h-9 rounded border-2 cursor-pointer"
+                style={{ borderColor: `${accent}66`, backgroundColor: accent }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-2 text-[9px] font-mono font-bold uppercase tracking-widest cursor-pointer transition-all"
-                  style={
-                    tab === t
-                      ? { color: accent, borderBottom: `1px solid ${accent}` }
-                      : { color: "rgba(100,116,139,0.6)" }
-                  }
-                >
-                  {t}
-                </button>
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
               ))}
             </div>
-
-            <div className="p-3 space-y-3">
-              {tab === "config" && (
-                <>
-                  {/* Condition Type */}
-                  <div className="space-y-1">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Type
-                    </div>
-                    {(["price", "gas", "balance", "custom"] as const).map(
-                      (t) => (
-                        <button
-                          key={t}
-                          onClick={() => update("conditionType", t)}
-                          className="w-full py-1.5 px-2.5 rounded-lg text-left cursor-pointer transition-all text-[9px] font-mono"
-                          style={
-                            conditionType === t
-                              ? {
-                                  background: `${accent}18`,
-                                  border: `1px solid ${accent}44`,
-                                  color: accent,
-                                }
-                              : {
-                                  background: "rgba(255,255,255,0.02)",
-                                  border: "1px solid rgba(51,65,85,0.6)",
-                                  color: "rgba(148,163,184,0.6)",
-                                }
-                          }
-                        >
-                          {t === "price"
-                            ? "Price (USD)"
-                            : t === "gas"
-                              ? "Gas (Solana μ◎)"
-                              : t === "balance"
-                                ? "Wallet Balance (SOL)"
-                                : "Custom Expression"}
-                        </button>
-                      ),
-                    )}
-                  </div>
-
-                  {/* Token — price only */}
-                  {conditionType === "price" && (
-                    <div className="space-y-1.5">
-                      <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                        Token
-                      </div>
-                      <input
-                        type="text"
-                        value={token}
-                        onChange={(e) =>
-                          update("token", e.target.value.toUpperCase())
-                        }
-                        placeholder="SOL"
-                        className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none uppercase"
-                        style={{
-                          background: "rgba(2,6,23,0.9)",
-                          border: "1px solid rgba(51,65,85,0.8)",
-                        }}
-                        onFocus={(e) => (e.target.style.borderColor = accent)}
-                        onBlur={(e) =>
-                          (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                        }
-                      />
-                    </div>
-                  )}
-
-                  {/* Wallet address — balance only */}
-                  {conditionType === "balance" && (
-                    <div className="space-y-1.5">
-                      <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                        Wallet Address
-                      </div>
-                      <input
-                        type="text"
-                        value={walletAddress}
-                        onChange={(e) =>
-                          update("walletAddress", e.target.value)
-                        }
-                        placeholder="Solana pubkey..."
-                        className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                        style={{
-                          background: "rgba(2,6,23,0.9)",
-                          border: "1px solid rgba(51,65,85,0.8)",
-                        }}
-                        onFocus={(e) => (e.target.style.borderColor = accent)}
-                        onBlur={(e) =>
-                          (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                        }
-                      />
-                    </div>
-                  )}
-
-                  {/* Expression — custom only */}
-                  {conditionType === "custom" && (
-                    <div className="space-y-1.5">
-                      <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                        Expression
-                      </div>
-                      <input
-                        type="text"
-                        value={expression}
-                        onChange={(e) => update("expression", e.target.value)}
-                        placeholder="price > 100 && gas < 5000"
-                        className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                        style={{
-                          background: "rgba(2,6,23,0.9)",
-                          border: "1px solid rgba(51,65,85,0.8)",
-                        }}
-                        onFocus={(e) => (e.target.style.borderColor = accent)}
-                        onBlur={(e) =>
-                          (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                        }
-                      />
-                      <div className="text-[7px] font-mono text-slate-600">
-                        vars: price, gas (μ◎), balance
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Operator — not for custom */}
-                  {conditionType !== "custom" && (
-                    <div className="space-y-1.5">
-                      <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                        Operator
-                      </div>
-                      <div className="grid grid-cols-5 gap-1">
-                        {([">", "<", "=", ">=", "<="] as const).map((op) => (
-                          <button
-                            key={op}
-                            onClick={() => update("operator", op)}
-                            className="py-1.5 rounded-lg text-[9px] font-mono font-bold cursor-pointer transition-all"
-                            style={
-                              operator === op
-                                ? {
-                                    background: `${accent}22`,
-                                    color: accent,
-                                    border: `1px solid ${accent}55`,
-                                  }
-                                : {
-                                    background: "rgba(255,255,255,0.03)",
-                                    color: "rgba(148,163,184,0.5)",
-                                    border: "1px solid rgba(51,65,85,0.8)",
-                                  }
-                            }
-                          >
-                            {op}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Threshold — not for custom */}
-                  {conditionType !== "custom" && (
-                    <div className="space-y-1.5">
-                      <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                        Threshold{" "}
-                        {conditionType === "gas"
-                          ? "(μ◎)"
-                          : conditionType === "balance"
-                            ? "(SOL)"
-                            : "(USD)"}
-                      </div>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={String(data.threshold ?? data.value ?? "")}
-                        onChange={(e) => {
-                          if (/^[\d.]*$/.test(e.target.value)) {
-                            update("threshold", e.target.value);
-                            update("value", e.target.value);
-                          }
-                        }}
-                        placeholder={
-                          conditionType === "gas"
-                            ? "5000"
-                            : conditionType === "balance"
-                              ? "1.0"
-                              : "100"
-                        }
-                        className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                        style={{
-                          background: "rgba(2,6,23,0.9)",
-                          border: "1px solid rgba(51,65,85,0.8)",
-                        }}
-                        onFocus={(e) => (e.target.style.borderColor = accent)}
-                        onBlur={(e) =>
-                          (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                        }
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-
-              {tab === "color" && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(e) => update("customColor", e.target.value)}
-                      className="w-10 h-10 rounded border-2 cursor-pointer"
-                      style={{
-                        borderColor: `${accent}66`,
-                        backgroundColor: accent,
-                      }}
-                    />
-                    <input
-                      type="text"
-                      value={accent.toUpperCase()}
-                      onChange={(e) => {
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                          update("customColor", e.target.value);
-                      }}
-                      className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      maxLength={7}
-                    />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {PRESET_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => update("customColor", c)}
-                        className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                        style={{
-                          backgroundColor: c,
-                          borderColor:
-                            accent === c ? "white" : "rgba(51,65,85,0.5)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {customColor && (
-                    <button
-                      onClick={() => update("customColor", undefined)}
-                      className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                      style={{
-                        color: "rgba(148,163,184,0.6)",
-                        borderColor: "rgba(51,65,85,0.5)",
-                      }}
-                    >
-                      Reset
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {customColor && (
+              <button
+                onClick={() => {
+                  update("customColor", undefined);
+                  setShowPopover(false);
+                }}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
-      {/* Target handle (top) */}
       <Handle
         type="target"
         position={Position.Top}
@@ -730,7 +510,6 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
         className="!w-3 !h-3 !border-2"
         style={{ background: accent, borderColor: `${accent}cc` }}
       />
-      {/* True output (left) */}
       <Handle
         type="source"
         position={Position.Bottom}
@@ -738,7 +517,6 @@ export const ConditionNode = memo(({ data, selected, id }: NodeProps) => {
         className="!w-3 !h-3 !border-2"
         style={{ background: "#34d399", borderColor: "#34d399cc", left: "30%" }}
       />
-      {/* False output (right) */}
       <Handle
         type="source"
         position={Position.Bottom}

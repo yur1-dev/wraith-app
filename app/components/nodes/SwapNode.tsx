@@ -10,13 +10,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   ArrowRight,
-  Zap,
   TrendingDown,
-  ChevronDown,
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
-
-// ── Token lists ───────────────────────────────────────────────────────────────
 
 const TOKENS_BY_CHAIN: Record<string, string[]> = {
   solana: [
@@ -37,15 +33,6 @@ const TOKENS_BY_CHAIN: Record<string, string[]> = {
   optimism: ["ETH", "USDC", "USDT", "WBTC", "DAI"],
   polygon: ["MATIC", "USDC", "USDT", "WBTC", "DAI"],
 };
-
-const CHAINS = [
-  "solana",
-  "ethereum",
-  "arbitrum",
-  "base",
-  "optimism",
-  "polygon",
-];
 
 const DEX_BY_CHAIN: Record<string, string[]> = {
   solana: ["Jupiter", "Orca", "Raydium"],
@@ -77,8 +64,6 @@ const TOKEN_COLORS: Record<string, string> = {
   cbETH: "#627EEA",
 };
 
-const SLIPPAGE_PRESETS = [0.1, 0.5, 1.0, 3.0];
-
 const PRESET_COLORS = [
   "#a855f7",
   "#f97316",
@@ -91,8 +76,6 @@ const PRESET_COLORS = [
   "#ec4899",
   "#84cc16",
 ];
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SwapQuote {
   dex: string;
@@ -111,8 +94,6 @@ interface SwapQuote {
   cached?: boolean;
   isEstimate?: boolean;
 }
-
-// ── Token badge ───────────────────────────────────────────────────────────────
 
 function TokenBadge({
   token,
@@ -137,8 +118,6 @@ function TokenBadge({
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-
 export const SwapNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
@@ -151,15 +130,29 @@ export const SwapNode = memo(({ data, selected, id }: NodeProps) => {
   const customColor = data.customColor as string | undefined;
   const accent = customColor ?? "#3b82f6";
 
-  const [tab, setTab] = useState<"config" | "color">("config");
   const [showPopover, setShowPopover] = useState(false);
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [tokenDropdown, setTokenDropdown] = useState<"from" | "to" | null>(
-    null,
-  );
+
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!showPopover) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (
+        popoverRef.current?.contains(target) ||
+        buttonRef.current?.contains(target)
+      )
+        return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleClick, true);
+    return () => window.removeEventListener("mousedown", handleClick, true);
+  }, [showPopover]);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const amountRef = useRef(amount);
@@ -218,10 +211,7 @@ export const SwapNode = memo(({ data, selected, id }: NodeProps) => {
     };
   }, [fetchQuote]);
 
-  // Re-fetch when key params change
-  // Debounced re-fetch when params change — prevents keystroke spam from properties panel
   useEffect(() => {
-    // Only fetch if tokens are valid known tokens (not mid-typing partial strings)
     const validTokens = TOKENS_BY_CHAIN[chain] ?? TOKENS_BY_CHAIN.solana;
     if (!validTokens.includes(fromToken) || !validTokens.includes(toToken))
       return;
@@ -231,18 +221,12 @@ export const SwapNode = memo(({ data, selected, id }: NodeProps) => {
     const debounce = setTimeout(() => {
       fetchQuote();
       intervalRef.current = setInterval(fetchQuote, 15_000);
-    }, 400); // 400ms debounce
+    }, 400);
     return () => {
       clearTimeout(debounce);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [chain, fromToken, toToken, amount, slippage, dex, fetchQuote]);
-
-  useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
-  }, []);
 
   const priceImpactColor =
     quote?.priceImpact == null
@@ -252,9 +236,6 @@ export const SwapNode = memo(({ data, selected, id }: NodeProps) => {
         : quote.priceImpact < 3
           ? "#fbbf24"
           : "#f87171";
-
-  const tokens = TOKENS_BY_CHAIN[chain] ?? TOKENS_BY_CHAIN.solana;
-  const dexOptions = ["auto", ...(DEX_BY_CHAIN[chain] ?? [])];
 
   return (
     <div
@@ -310,6 +291,7 @@ export const SwapNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -487,382 +469,85 @@ export const SwapNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
-      {/* Popover */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-56 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()} // keep clicks inside from closing it
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
-          />
-          <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-64 rounded-xl overflow-hidden shadow-2xl"
+            className="h-px w-full"
             style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
             }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          />
+          <div className="p-3 space-y-3">
             <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-
-            {/* Tabs */}
-            <div
-              className="flex border-b"
-              style={{ borderColor: `${accent}15` }}
+              className="text-[8px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: `${accent}80` }}
             >
-              {(["config", "color"] as const).map((t) => (
+              Node Color
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-9 h-9 rounded border-2 cursor-pointer"
+                style={{ borderColor: `${accent}66`, backgroundColor: accent }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-2 text-[9px] font-mono font-bold uppercase tracking-widest cursor-pointer transition-all"
-                  style={
-                    tab === t
-                      ? { color: accent, borderBottom: `1px solid ${accent}` }
-                      : { color: "rgba(100,116,139,0.6)" }
-                  }
-                >
-                  {t}
-                </button>
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
               ))}
             </div>
-
-            <div className="p-3 space-y-3 max-h-[480px] overflow-y-auto">
-              {tab === "config" && (
-                <>
-                  {/* Chain */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Chain
-                    </div>
-                    <div className="grid grid-cols-3 gap-1">
-                      {CHAINS.map((c) => (
-                        <button
-                          key={c}
-                          onClick={() => {
-                            update("chain", c);
-                            const newTokens = TOKENS_BY_CHAIN[c] ?? [];
-                            if (!newTokens.includes(fromToken))
-                              update("fromToken", newTokens[0]);
-                            if (!newTokens.includes(toToken))
-                              update("toToken", newTokens[1] ?? newTokens[0]);
-                          }}
-                          className="py-1.5 rounded-lg text-[8px] font-mono font-bold capitalize tracking-wider cursor-pointer transition-all"
-                          style={
-                            chain === c
-                              ? {
-                                  background: `${accent}22`,
-                                  color: accent,
-                                  border: `1px solid ${accent}55`,
-                                }
-                              : {
-                                  background: "rgba(255,255,255,0.02)",
-                                  color: "rgba(148,163,184,0.5)",
-                                  border: "1px solid rgba(51,65,85,0.8)",
-                                }
-                          }
-                        >
-                          {c === "ethereum"
-                            ? "ETH"
-                            : c === "arbitrum"
-                              ? "ARB"
-                              : c === "optimism"
-                                ? "OP"
-                                : c.slice(0, 4)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* From token */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      From Token
-                    </div>
-                    <div className="relative">
-                      <button
-                        onClick={() =>
-                          setTokenDropdown(
-                            tokenDropdown === "from" ? null : "from",
-                          )
-                        }
-                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer"
-                        style={{
-                          background: "rgba(2,6,23,0.9)",
-                          border: `1px solid ${tokenDropdown === "from" ? accent + "55" : "rgba(51,65,85,0.8)"}`,
-                        }}
-                      >
-                        <TokenBadge token={fromToken} size="sm" />
-                        <ChevronDown className="w-3 h-3 text-slate-500" />
-                      </button>
-                      {tokenDropdown === "from" && (
-                        <div
-                          className="absolute top-[calc(100%+4px)] left-0 right-0 rounded-lg overflow-hidden z-10"
-                          style={{
-                            background: "rgba(2,6,23,0.98)",
-                            border: `1px solid ${accent}33`,
-                          }}
-                        >
-                          {tokens
-                            .filter((t) => t !== toToken)
-                            .map((t) => (
-                              <button
-                                key={t}
-                                onClick={() => {
-                                  update("fromToken", t);
-                                  setTokenDropdown(null);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-white/5 cursor-pointer transition-all"
-                              >
-                                <TokenBadge token={t} size="sm" />
-                                <span className="text-[9px] font-mono text-slate-400">
-                                  {t}
-                                </span>
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* To token */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      To Token
-                    </div>
-                    <div className="relative">
-                      <button
-                        onClick={() =>
-                          setTokenDropdown(tokenDropdown === "to" ? null : "to")
-                        }
-                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer"
-                        style={{
-                          background: "rgba(2,6,23,0.9)",
-                          border: `1px solid ${tokenDropdown === "to" ? accent + "55" : "rgba(51,65,85,0.8)"}`,
-                        }}
-                      >
-                        <TokenBadge token={toToken} size="sm" />
-                        <ChevronDown className="w-3 h-3 text-slate-500" />
-                      </button>
-                      {tokenDropdown === "to" && (
-                        <div
-                          className="absolute top-[calc(100%+4px)] left-0 right-0 rounded-lg overflow-hidden z-10"
-                          style={{
-                            background: "rgba(2,6,23,0.98)",
-                            border: `1px solid ${accent}33`,
-                          }}
-                        >
-                          {tokens
-                            .filter((t) => t !== fromToken)
-                            .map((t) => (
-                              <button
-                                key={t}
-                                onClick={() => {
-                                  update("toToken", t);
-                                  setTokenDropdown(null);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-white/5 cursor-pointer transition-all"
-                              >
-                                <TokenBadge token={t} size="sm" />
-                                <span className="text-[9px] font-mono text-slate-400">
-                                  {t}
-                                </span>
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Swap button */}
-                  <button
-                    onClick={() => {
-                      update("fromToken", toToken);
-                      update("toToken", fromToken);
-                    }}
-                    className="w-full py-1.5 rounded-lg text-[8px] font-mono uppercase tracking-widest cursor-pointer flex items-center justify-center gap-1.5"
-                    style={{
-                      background: `${accent}10`,
-                      border: `1px solid ${accent}22`,
-                      color: accent,
-                    }}
-                  >
-                    <ArrowLeftRight className="w-3 h-3" /> Flip tokens
-                  </button>
-
-                  {/* Amount */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Amount ({fromToken})
-                    </div>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={String(data.amount ?? "1")}
-                      onChange={(e) => {
-                        if (/^\d*\.?\d*$/.test(e.target.value))
-                          update("amount", e.target.value);
-                      }}
-                      placeholder="1"
-                      className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = accent)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                      }
-                    />
-                  </div>
-
-                  {/* Slippage */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Slippage Tolerance
-                    </div>
-                    <div className="grid grid-cols-4 gap-1">
-                      {SLIPPAGE_PRESETS.map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => update("slippage", s)}
-                          className="py-1.5 rounded-lg text-[8px] font-mono font-bold tracking-wider cursor-pointer transition-all"
-                          style={
-                            slippage === s
-                              ? {
-                                  background: `${accent}22`,
-                                  color: accent,
-                                  border: `1px solid ${accent}55`,
-                                }
-                              : {
-                                  background: "rgba(255,255,255,0.02)",
-                                  color: "rgba(148,163,184,0.5)",
-                                  border: "1px solid rgba(51,65,85,0.8)",
-                                }
-                          }
-                        >
-                          {s}%
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* DEX */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      DEX / Aggregator
-                    </div>
-                    <div className="space-y-1">
-                      {dexOptions.map((d) => (
-                        <button
-                          key={d}
-                          onClick={() => update("dex", d)}
-                          className="w-full py-1.5 px-2.5 rounded-lg text-left cursor-pointer transition-all"
-                          style={
-                            dex === d
-                              ? {
-                                  background: `${accent}18`,
-                                  border: `1px solid ${accent}44`,
-                                }
-                              : {
-                                  background: "rgba(255,255,255,0.02)",
-                                  border: "1px solid rgba(51,65,85,0.6)",
-                                }
-                          }
-                        >
-                          <span
-                            className="text-[9px] font-mono font-bold"
-                            style={{
-                              color:
-                                dex === d ? accent : "rgba(148,163,184,0.6)",
-                            }}
-                          >
-                            {d === "auto" ? "Auto (Best Route)" : d}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Refresh */}
-                  <button
-                    onClick={fetchQuote}
-                    className="w-full h-7 rounded-lg flex items-center justify-center gap-1.5 text-[8px] font-mono font-bold uppercase tracking-widest cursor-pointer"
-                    style={{
-                      background: `${accent}15`,
-                      border: `1px solid ${accent}33`,
-                      color: accent,
-                    }}
-                  >
-                    <Zap className="w-2.5 h-2.5" /> Refresh Quote
-                  </button>
-                </>
-              )}
-
-              {tab === "color" && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(e) => update("customColor", e.target.value)}
-                      className="w-10 h-10 rounded border-2 cursor-pointer"
-                      style={{
-                        borderColor: `${accent}66`,
-                        backgroundColor: accent,
-                      }}
-                    />
-                    <input
-                      type="text"
-                      value={accent.toUpperCase()}
-                      onChange={(e) => {
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                          update("customColor", e.target.value);
-                      }}
-                      className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      maxLength={7}
-                    />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {PRESET_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => update("customColor", c)}
-                        className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                        style={{
-                          backgroundColor: c,
-                          borderColor:
-                            accent === c ? "white" : "rgba(51,65,85,0.5)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {customColor && (
-                    <button
-                      onClick={() => update("customColor", undefined)}
-                      className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                      style={{
-                        color: "rgba(148,163,184,0.6)",
-                        borderColor: "rgba(51,65,85,0.5)",
-                      }}
-                    >
-                      Reset
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {customColor && (
+              <button
+                onClick={() => {
+                  update("customColor", undefined);
+                  setShowPopover(false);
+                }}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
       <Handle

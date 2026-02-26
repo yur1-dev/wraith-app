@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   RotateCw,
@@ -39,13 +39,19 @@ export const LoopNode = memo(({ data, selected, id }: NodeProps) => {
   const customColor = data.customColor as string | undefined;
   const accent = customColor ?? "#e879f9";
 
-  const [tab, setTab] = useState<"config" | "color">("config");
   const [showPopover, setShowPopover] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleMouseDown, true);
+    return () => window.removeEventListener("mousedown", handleMouseDown, true);
   }, []);
 
   const update = (field: string, val: unknown) =>
@@ -99,6 +105,7 @@ export const LoopNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -122,7 +129,6 @@ export const LoopNode = memo(({ data, selected, id }: NodeProps) => {
 
       {/* Body */}
       <div className="px-3 py-3 space-y-2 select-none">
-        {/* Iterations display */}
         <div
           className="rounded-lg px-3 py-2.5 flex items-center gap-3"
           style={{
@@ -175,7 +181,6 @@ export const LoopNode = memo(({ data, selected, id }: NodeProps) => {
           )}
         </div>
 
-        {/* Break condition */}
         {breakCondition ? (
           <div
             className="rounded-lg px-3 py-1.5 flex items-center gap-2"
@@ -215,7 +220,6 @@ export const LoopNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         ) : null}
 
-        {/* Loop back indicator */}
         <div className="flex items-center gap-2 px-1">
           <div className="flex-1 h-px" style={{ background: `${accent}20` }} />
           <span className="text-[7px] font-mono text-slate-700 uppercase tracking-widest">
@@ -225,220 +229,89 @@ export const LoopNode = memo(({ data, selected, id }: NodeProps) => {
         </div>
       </div>
 
-      {/* Popover */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
+            className="h-px w-full"
+            style={{
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
+            }}
           />
           <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-60 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="px-2 py-1.5 border-b"
+            style={{ borderColor: `${accent}15` }}
           >
-            <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-            <div
-              className="flex border-b"
-              style={{ borderColor: `${accent}15` }}
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
             >
-              {(["config", "color"] as const).map((t) => (
+              Node Color
+            </span>
+          </div>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-10 h-10 rounded border-2 cursor-pointer"
+                style={{ borderColor: `${accent}66`, backgroundColor: accent }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-2 text-[9px] font-mono font-bold uppercase tracking-widest cursor-pointer transition-all"
-                  style={
-                    tab === t
-                      ? { color: accent, borderBottom: `1px solid ${accent}` }
-                      : { color: "rgba(100,116,139,0.6)" }
-                  }
-                >
-                  {t}
-                </button>
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
               ))}
             </div>
-
-            <div className="p-3 space-y-3">
-              {tab === "config" && (
-                <>
-                  {/* Iterations */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Iterations
-                    </div>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={String(data.iterations ?? "")}
-                      onChange={(e) => {
-                        if (/^\d*$/.test(e.target.value))
-                          update("iterations", e.target.value);
-                      }}
-                      placeholder="leave empty for ∞ infinite"
-                      className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = accent)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                      }
-                    />
-                    <div className="text-[7px] font-mono text-slate-600">
-                      // empty = infinite loop
-                    </div>
-                  </div>
-
-                  {/* Break Condition */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Break Condition
-                    </div>
-                    <input
-                      type="text"
-                      value={String(data.breakCondition ?? "")}
-                      onChange={(e) => update("breakCondition", e.target.value)}
-                      placeholder="balance > 1000"
-                      className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = accent)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                      }
-                    />
-                    <div className="text-[7px] font-mono text-slate-600">
-                      // evaluated by Flow Runner each iteration
-                    </div>
-                  </div>
-
-                  {/* Delay between loops */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Delay Between Loops
-                    </div>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={String(data.loopDelay ?? "0")}
-                      onChange={(e) => {
-                        if (/^\d*$/.test(e.target.value))
-                          update("loopDelay", e.target.value);
-                      }}
-                      placeholder="0"
-                      className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = accent)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                      }
-                    />
-                    <div className="grid grid-cols-3 gap-1">
-                      {DELAY_UNITS.map((u) => (
-                        <button
-                          key={u}
-                          onClick={() => update("loopDelayUnit", u)}
-                          className="py-1.5 rounded-lg text-[8px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all"
-                          style={
-                            loopDelayUnit === u
-                              ? {
-                                  background: `${accent}22`,
-                                  color: accent,
-                                  border: `1px solid ${accent}55`,
-                                }
-                              : {
-                                  background: "rgba(255,255,255,0.03)",
-                                  color: "rgba(148,163,184,0.5)",
-                                  border: "1px solid rgba(51,65,85,0.8)",
-                                }
-                          }
-                        >
-                          {u}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {tab === "color" && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(e) => update("customColor", e.target.value)}
-                      className="w-10 h-10 rounded border-2 cursor-pointer"
-                      style={{
-                        borderColor: `${accent}66`,
-                        backgroundColor: accent,
-                      }}
-                    />
-                    <input
-                      type="text"
-                      value={accent.toUpperCase()}
-                      onChange={(e) => {
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                          update("customColor", e.target.value);
-                      }}
-                      className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      maxLength={7}
-                    />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {PRESET_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => update("customColor", c)}
-                        className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                        style={{
-                          backgroundColor: c,
-                          borderColor:
-                            accent === c ? "white" : "rgba(51,65,85,0.5)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {customColor && (
-                    <button
-                      onClick={() => update("customColor", undefined)}
-                      className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                      style={{
-                        color: "rgba(148,163,184,0.6)",
-                        borderColor: "rgba(51,65,85,0.5)",
-                      }}
-                    >
-                      Reset
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
-      {/* Input handle */}
       <Handle
         type="target"
         position={Position.Top}
@@ -446,7 +319,6 @@ export const LoopNode = memo(({ data, selected, id }: NodeProps) => {
         className="!w-3 !h-3 !border-2"
         style={{ background: accent, borderColor: `${accent}cc` }}
       />
-      {/* Output — continues after loop finishes */}
       <Handle
         type="source"
         position={Position.Bottom}
@@ -454,7 +326,6 @@ export const LoopNode = memo(({ data, selected, id }: NodeProps) => {
         className="!w-3 !h-3 !border-2"
         style={{ background: accent, borderColor: `${accent}cc` }}
       />
-      {/* Loop back — connects back to first node inside loop */}
       <Handle
         type="source"
         position={Position.Left}

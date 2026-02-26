@@ -10,13 +10,9 @@ import {
   Loader2,
   RefreshCw,
   AlertTriangle,
-  Zap,
-  Shield,
   Activity,
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
-
-// ── Fetchers — via Next.js API proxy (no CORS) ────────────────────────────────
 
 async function fetchSolanaFees(): Promise<{
   low: number;
@@ -44,18 +40,14 @@ async function fetchJitoTipFloor(): Promise<{
   ema50: number;
 } | null> {
   try {
-    // Jito's API is browser-friendly (has proper CORS headers)
     const res = await fetch(
       "https://bundles.jito.wtf/api/v1/bundles/tip_floor",
-      {
-        headers: { Accept: "application/json" },
-      },
+      { headers: { Accept: "application/json" } },
     );
     if (!res.ok) return null;
     const data = await res.json();
     const entry = Array.isArray(data) ? data[0] : data;
     if (!entry) return null;
-
     const toL = (sol: number) => Math.round((sol ?? 0) * 1e9);
     return {
       p25: toL(entry.landed_tips_25th_percentile),
@@ -69,7 +61,6 @@ async function fetchJitoTipFloor(): Promise<{
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function formatMicrolamports(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
@@ -93,7 +84,6 @@ const PRESET_COLORS = [
   "#84cc16",
 ];
 
-// ── Component ─────────────────────────────────────────────────────────────────
 export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
   const strategy = String(data.strategy ?? "priority");
   const urgency = String(data.urgency ?? "medium") as "low" | "medium" | "high";
@@ -104,7 +94,6 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
   const customColor = data.customColor as string | undefined;
   const accent = customColor ?? "#84cc16";
 
-  const [tab, setTab] = useState<"config" | "color">("config");
   const [showPopover, setShowPopover] = useState(false);
   const [fees, setFees] = useState<{
     low: number;
@@ -124,8 +113,11 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [waitMinutes, setWaitMinutes] = useState(0);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waitRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const activeFee = fees
     ? ({ low: fees.low, medium: fees.medium, high: fees.high }[urgency] ??
@@ -198,9 +190,14 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
   }, [strategy, fees, feeOk, timedOut]);
 
   useEffect(() => {
-    const close = () => setShowPopover(false);
-    window.addEventListener("closeColorMenus", close);
-    return () => window.removeEventListener("closeColorMenus", close);
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setShowPopover(false);
+    };
+    window.addEventListener("mousedown", handleMouseDown, true);
+    return () => window.removeEventListener("mousedown", handleMouseDown, true);
   }, []);
 
   const update = (field: string, val: unknown) =>
@@ -253,6 +250,7 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         </div>
         <button
+          ref={buttonRef}
           onClick={(e) => {
             e.stopPropagation();
             setShowPopover((p) => !p);
@@ -289,7 +287,7 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         )}
 
-        {/* ── PRIORITY FEE ── */}
+        {/* PRIORITY FEE */}
         {strategy === "priority" && (
           <>
             <div
@@ -373,7 +371,7 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
           </>
         )}
 
-        {/* ── JITO BUNDLE ── */}
+        {/* JITO BUNDLE */}
         {strategy === "jito" && (
           <>
             <div
@@ -486,7 +484,7 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
           </>
         )}
 
-        {/* ── WAIT FOR LOW FEE ── */}
+        {/* WAIT FOR LOW FEE */}
         {strategy === "wait" && (
           <>
             <div
@@ -562,7 +560,6 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
                 </button>
               </div>
             </div>
-
             {!feeOk && !timedOut && fees && (
               <div
                 className="rounded-lg px-3 py-1.5 flex items-center gap-2"
@@ -577,7 +574,6 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
                 </span>
               </div>
             )}
-
             {timedOut && (
               <div
                 className="rounded-lg px-3 py-1.5 flex items-center gap-2"
@@ -592,7 +588,6 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
                 </span>
               </div>
             )}
-
             {fees && (
               <div className="grid grid-cols-3 gap-1">
                 {(["low", "medium", "high"] as const).map((level) => (
@@ -614,7 +609,6 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
                 ))}
               </div>
             )}
-
             <div className="text-[8px] font-mono text-slate-700 text-right">
               {lastUpdated ? `updated ${lastUpdated}` : "fetching..."}
             </div>
@@ -622,300 +616,87 @@ export const GasOptimizerNode = memo(({ data, selected, id }: NodeProps) => {
         )}
       </div>
 
-      {/* Popover */}
+      {/* Popover — color only */}
       {showPopover && (
-        <>
+        <div
+          ref={popoverRef}
+          className="absolute top-0 left-[calc(100%+10px)] z-[100] w-52 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(2,6,23,0.98)",
+            border: `1px solid ${accent}33`,
+            boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(24px)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
-            className="fixed inset-0 z-[90]"
-            onClick={() => setShowPopover(false)}
+            className="h-px w-full"
+            style={{
+              background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
+            }}
           />
           <div
-            className="absolute top-0 left-[calc(100%+10px)] z-[100] w-60 rounded-xl overflow-hidden shadow-2xl"
-            style={{
-              background: "rgba(2,6,23,0.98)",
-              border: `1px solid ${accent}33`,
-              boxShadow: `0 25px 50px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
-              backdropFilter: "blur(24px)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="px-2 py-1.5 border-b"
+            style={{ borderColor: `${accent}15` }}
           >
-            <div
-              className="h-px w-full"
-              style={{
-                background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
-              }}
-            />
-            <div
-              className="flex border-b"
-              style={{ borderColor: `${accent}15` }}
+            <span
+              className="text-[9px] font-mono font-bold uppercase tracking-widest"
+              style={{ color: accent }}
             >
-              {(["config", "color"] as const).map((t) => (
+              Node Color
+            </span>
+          </div>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => update("customColor", e.target.value)}
+                className="w-10 h-10 rounded border-2 cursor-pointer"
+                style={{ borderColor: `${accent}66`, backgroundColor: accent }}
+              />
+              <input
+                type="text"
+                value={accent.toUpperCase()}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
+                    update("customColor", e.target.value);
+                }}
+                className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
+                style={{
+                  background: "rgba(2,6,23,0.9)",
+                  border: "1px solid rgba(51,65,85,0.8)",
+                }}
+                maxLength={7}
+              />
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {PRESET_COLORS.map((c) => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-2 text-[9px] font-mono font-bold uppercase tracking-widest cursor-pointer transition-all"
-                  style={
-                    tab === t
-                      ? { color: accent, borderBottom: `1px solid ${accent}` }
-                      : { color: "rgba(100,116,139,0.6)" }
-                  }
-                >
-                  {t}
-                </button>
+                  key={c}
+                  onClick={() => update("customColor", c)}
+                  className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: accent === c ? "white" : "rgba(51,65,85,0.5)",
+                  }}
+                />
               ))}
             </div>
-
-            <div className="p-3 space-y-3">
-              {tab === "config" && (
-                <>
-                  {/* Strategy */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Strategy
-                    </div>
-                    <div className="space-y-1">
-                      {[
-                        {
-                          val: "priority",
-                          label: "Priority Fee",
-                          desc: "Set microlamport fee level",
-                          icon: <Activity className="w-3 h-3" />,
-                        },
-                        {
-                          val: "jito",
-                          label: "Jito Bundle",
-                          desc: "MEV protected, real tip data",
-                          icon: <Shield className="w-3 h-3" />,
-                        },
-                        {
-                          val: "wait",
-                          label: "Wait for Low Fee",
-                          desc: "Poll until fee drops below max",
-                          icon: <Clock className="w-3 h-3" />,
-                        },
-                      ].map((s) => (
-                        <button
-                          key={s.val}
-                          onClick={() => update("strategy", s.val)}
-                          className="w-full py-2 px-2.5 rounded-lg text-left cursor-pointer transition-all"
-                          style={
-                            strategy === s.val
-                              ? {
-                                  background: `${accent}18`,
-                                  border: `1px solid ${accent}44`,
-                                }
-                              : {
-                                  background: "rgba(255,255,255,0.02)",
-                                  border: "1px solid rgba(51,65,85,0.6)",
-                                }
-                          }
-                        >
-                          <div className="flex items-center gap-2">
-                            <span
-                              style={{
-                                color:
-                                  strategy === s.val
-                                    ? accent
-                                    : "rgba(100,116,139,0.5)",
-                              }}
-                            >
-                              {s.icon}
-                            </span>
-                            <div>
-                              <div
-                                className="text-[9px] font-mono font-bold"
-                                style={{
-                                  color:
-                                    strategy === s.val
-                                      ? accent
-                                      : "rgba(148,163,184,0.6)",
-                                }}
-                              >
-                                {s.label}
-                              </div>
-                              <div className="text-[8px] font-mono text-slate-600">
-                                {s.desc}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Fee level — priority + wait */}
-                  {(strategy === "priority" || strategy === "wait") && (
-                    <div className="space-y-1.5">
-                      <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                        Fee Level
-                      </div>
-                      <div className="grid grid-cols-3 gap-1">
-                        {(["low", "medium", "high"] as const).map((u) => (
-                          <button
-                            key={u}
-                            onClick={() => update("urgency", u)}
-                            className="py-1.5 rounded-lg text-[8px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all"
-                            style={
-                              urgency === u
-                                ? {
-                                    background: `${accent}22`,
-                                    color: accent,
-                                    border: `1px solid ${accent}55`,
-                                  }
-                                : {
-                                    background: "rgba(255,255,255,0.03)",
-                                    color: "rgba(148,163,184,0.5)",
-                                    border: "1px solid rgba(51,65,85,0.8)",
-                                  }
-                            }
-                          >
-                            {u}
-                          </button>
-                        ))}
-                      </div>
-                      {fees && (
-                        <div className="text-[8px] font-mono text-slate-600">
-                          {urgency}:{" "}
-                          <span style={{ color: accent }}>
-                            {formatMicrolamports(fees[urgency])} μ◎
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Max fee — wait only */}
-                  {strategy === "wait" && (
-                    <div className="space-y-1.5">
-                      <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                        Max Fee (microlamports)
-                      </div>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={String(data.maxFee ?? "50000")}
-                        onChange={(e) => {
-                          if (/^\d*$/.test(e.target.value))
-                            update("maxFee", e.target.value);
-                        }}
-                        placeholder="50000"
-                        className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                        style={{
-                          background: "rgba(2,6,23,0.9)",
-                          border: "1px solid rgba(51,65,85,0.8)",
-                        }}
-                        onFocus={(e) => (e.target.style.borderColor = accent)}
-                        onBlur={(e) =>
-                          (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                        }
-                      />
-                      {fees && (
-                        <div className="text-[8px] font-mono text-slate-600">
-                          current med: {formatMicrolamports(fees.medium)} μ◎
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Timeout */}
-                  <div className="space-y-1.5">
-                    <div className="text-[8px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-                      Timeout (minutes)
-                    </div>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={String(data.timeout ?? "60")}
-                      onChange={(e) => {
-                        if (/^\d*$/.test(e.target.value))
-                          update("timeout", e.target.value);
-                      }}
-                      placeholder="60"
-                      className="w-full h-7 px-2 rounded-md text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = accent)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = "rgba(51,65,85,0.8)")
-                      }
-                    />
-                  </div>
-
-                  <button
-                    onClick={refresh}
-                    className="w-full h-7 rounded-lg flex items-center justify-center gap-1.5 text-[8px] font-mono font-bold uppercase tracking-widest cursor-pointer"
-                    style={{
-                      background: `${accent}15`,
-                      border: `1px solid ${accent}33`,
-                      color: accent,
-                    }}
-                  >
-                    <Zap className="w-2.5 h-2.5" /> Refresh Now
-                  </button>
-                </>
-              )}
-
-              {tab === "color" && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(e) => update("customColor", e.target.value)}
-                      className="w-10 h-10 rounded border-2 cursor-pointer"
-                      style={{
-                        borderColor: `${accent}66`,
-                        backgroundColor: accent,
-                      }}
-                    />
-                    <input
-                      type="text"
-                      value={accent.toUpperCase()}
-                      onChange={(e) => {
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value))
-                          update("customColor", e.target.value);
-                      }}
-                      className="flex-1 h-8 px-2 rounded text-[10px] font-mono text-cyan-100 focus:outline-none"
-                      style={{
-                        background: "rgba(2,6,23,0.9)",
-                        border: "1px solid rgba(51,65,85,0.8)",
-                      }}
-                      maxLength={7}
-                    />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {PRESET_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => update("customColor", c)}
-                        className="aspect-square rounded border-2 transition-all hover:scale-110 cursor-pointer"
-                        style={{
-                          backgroundColor: c,
-                          borderColor:
-                            accent === c ? "white" : "rgba(51,65,85,0.5)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {customColor && (
-                    <button
-                      onClick={() => update("customColor", undefined)}
-                      className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
-                      style={{
-                        color: "rgba(148,163,184,0.6)",
-                        borderColor: "rgba(51,65,85,0.5)",
-                      }}
-                    >
-                      Reset
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {customColor && (
+              <button
+                onClick={() => update("customColor", undefined)}
+                className="w-full py-1.5 text-[8px] font-mono uppercase tracking-widest rounded border cursor-pointer"
+                style={{
+                  color: "rgba(148,163,184,0.6)",
+                  borderColor: "rgba(51,65,85,0.5)",
+                }}
+              >
+                Reset
+              </button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
       <Handle

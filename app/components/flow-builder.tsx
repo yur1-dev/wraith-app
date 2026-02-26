@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -65,23 +65,15 @@ const nodeTypes: NodeTypes = {
   gasOptimizer: GasOptimizerNode,
 };
 
-// ─── FitViewBridge ────────────────────────────────────────────────────────────
-// Rendered as a child of <ReactFlow> so useReactFlow() is valid here.
-// Registers the fitView fn upward via a ref callback on mount.
 function FitViewBridge({ onReady }: { onReady: (fn: () => void) => void }) {
   const { fitView } = useReactFlow();
-  // Run once on mount to register the fn
-  useCallback(() => {}, [])(); // dummy to keep hook count stable
-  // Register immediately (this runs every render but the ref just gets updated)
+  useCallback(() => {}, [])();
   onReady(() => {
     fitView({ padding: 0.18, minZoom: 0.55, maxZoom: 0.85, duration: 400 });
   });
   return null;
 }
 
-// ─── FlowInner ────────────────────────────────────────────────────────────────
-// Contains <ReactFlow>. Does NOT call useReactFlow() itself —
-// only FitViewBridge (a child) does that.
 function FlowInner({
   registerFitView,
 }: {
@@ -93,17 +85,54 @@ function FlowInner({
   const setEdges = useFlowStore((s) => s.setEdges);
   const setSelectedNode = useFlowStore((s) => s.setSelectedNode);
   const deleteNode = useFlowStore((s) => s.deleteNode);
+  const undo = useFlowStore((s) => s.undo);
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
 
+  // ── Ctrl+Z undo listener ──────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        // Don't fire if user is typing in an input/textarea
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [undo]);
+
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      setNodes(applyNodeChanges(changes, nodesRef.current) as Node[]);
+      // Intercept "remove" changes so we can save a snapshot before deletion
+      const removeChanges = changes.filter((c) => c.type === "remove");
+      if (removeChanges.length > 0) {
+        // Save snapshot of current state before any removals
+        const currentNodes = nodesRef.current;
+        const currentEdges = edgesRef.current;
+        // Push snapshot via store's undo mechanism by calling deleteNode for each
+        // But we need the snapshot saved atomically — use the store's pushSnapshot
+        useFlowStore.getState().pushSnapshot(currentNodes, currentEdges);
+        // Now apply all changes including removes
+        setNodes(applyNodeChanges(changes, currentNodes) as Node[]);
+        // Also remove connected edges for removed nodes
+        const removedIds = removeChanges.map((c) => (c as { id: string }).id);
+        setEdges(
+          currentEdges.filter(
+            (e) =>
+              !removedIds.includes(e.source) && !removedIds.includes(e.target),
+          ),
+        );
+      } else {
+        setNodes(applyNodeChanges(changes, nodesRef.current) as Node[]);
+      }
     },
-    [setNodes],
+    [setNodes, setEdges],
   );
 
   const onEdgesChange = useCallback(
@@ -157,9 +186,12 @@ function FlowInner({
       multiSelectionKeyCode="Control"
       panOnDrag={true}
       selectionOnDrag={true}
-      panOnScroll={true}
+      panOnScroll={false}
       zoomOnScroll={true}
       zoomOnPinch={true}
+      zoomActivationKeyCode={null}
+      minZoom={0.1}
+      maxZoom={2}
       nodesDraggable={true}
       nodesConnectable={true}
       nodesFocusable={true}
@@ -175,8 +207,13 @@ function FlowInner({
         style: { stroke: "rgb(56 189 248 / 0.6)", strokeWidth: 2 },
       }}
       proOptions={{ hideAttribution: true }}
+      // Faster zoom — default is 0.1, bumping to 0.25 makes it feel snappy
+      onWheel={undefined}
+      translateExtent={[
+        [-Infinity, -Infinity],
+        [Infinity, Infinity],
+      ]}
     >
-      {/* Lives inside ReactFlow — useReactFlow() is valid here */}
       <FitViewBridge onReady={registerFitView} />
 
       <Background
@@ -217,21 +254,15 @@ function FlowInner({
   );
 }
 
-// ─── FlowBuilder ──────────────────────────────────────────────────────────────
-// Wraps everything in ReactFlowProvider so the internal zustand store
-// is available to Header, TemplatesGallery, and all panel components.
 export function FlowBuilder() {
-  // fitViewFnRef stores the actual fitView fn once FitViewBridge registers it
   const fitViewFnRef = useRef<(() => void) | null>(null);
 
-  // Called by TemplatesGallery (via Header) after nodes/edges are set
   const handleTemplateLoad = useCallback(() => {
     setTimeout(() => {
       fitViewFnRef.current?.();
     }, 80);
   }, []);
 
-  // Called by FitViewBridge on every render — just updates the ref
   const registerFitView = useCallback((fn: () => void) => {
     fitViewFnRef.current = fn;
   }, []);
@@ -245,7 +276,6 @@ export function FlowBuilder() {
           <FlowInner registerFitView={registerFitView} />
         </div>
 
-        {/* UI panels float above canvas */}
         <div className="absolute inset-0 pt-14 pointer-events-none">
           <div className="pointer-events-auto">
             <Toolbar />

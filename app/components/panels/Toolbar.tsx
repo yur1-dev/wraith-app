@@ -22,9 +22,11 @@ import {
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
 import { useState } from "react";
+import { useReactFlow } from "@xyflow/react";
 
 export function Toolbar() {
   const addNode = useFlowStore((state) => state.addNode);
+  const { screenToFlowPosition } = useReactFlow();
   const [activeCategory, setActiveCategory] = useState<
     "core" | "defi" | "social"
   >("core");
@@ -57,13 +59,16 @@ export function Toolbar() {
   };
 
   const handleAddNode = (type: string) => {
+    // Convert the center of the visible screen to flow coordinates
+    const position = screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    });
+
     addNode({
       id: `${type}-${Date.now()}`,
       type,
-      position: {
-        x: Math.random() * 400 + 200,
-        y: Math.random() * 300 + 150,
-      },
+      position,
       data: {},
     });
   };
