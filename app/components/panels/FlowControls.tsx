@@ -194,7 +194,7 @@ export function FlowControls() {
     return (
       <>
         {/* Mobile FAB trigger */}
-        <div style={{ position: "fixed", bottom: 20, right: 16, zIndex: 9999 }}>
+        <div style={{ position: "fixed", bottom: 20, right: 16, zIndex: 200 }}>
           <button
             onClick={() => setMobileOpen((v) => !v)}
             style={{
@@ -228,7 +228,7 @@ export function FlowControls() {
               style={{
                 position: "fixed",
                 inset: 0,
-                zIndex: 9997,
+                zIndex: 197,
                 background: "rgba(0,0,0,0.5)",
                 backdropFilter: "blur(2px)",
               }}
@@ -239,7 +239,7 @@ export function FlowControls() {
                 bottom: 0,
                 left: 0,
                 right: 0,
-                zIndex: 9998,
+                zIndex: 198,
                 borderRadius: "16px 16px 0 0",
                 background: "rgba(10,15,25,0.98)",
                 border: "1px solid rgba(56,189,248,0.2)",
@@ -446,7 +446,7 @@ export function FlowControls() {
           position: "fixed",
           left: position.x,
           top: position.y,
-          zIndex: 9999,
+          zIndex: 200,
           userSelect: "none",
         }}
       >

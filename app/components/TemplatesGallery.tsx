@@ -87,7 +87,7 @@ export function TemplatesGallery({
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full sm:flex rounded-t-2xl sm:rounded-2xl overflow-hidden"
+        className="w-full rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col sm:flex-row"
         style={{
           maxWidth: preview ? 900 : 680,
           maxHeight: "92vh",
@@ -96,12 +96,10 @@ export function TemplatesGallery({
           boxShadow:
             "0 0 0 1px rgba(56,189,248,0.05), 0 -16px 48px rgba(0,0,0,0.6), 0 40px 80px rgba(0,0,0,0.9)",
           transition: "max-width 0.3s ease",
-          display: "flex",
-          flexDirection: "column",
         }}
       >
         {/* ── LEFT / MAIN PANEL ── */}
-        <div className="flex flex-col flex-1 min-w-0 min-h-0">
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           {/* Mobile drag handle */}
           <div className="flex justify-center pt-3 sm:hidden shrink-0">
             <div className="w-10 h-1 rounded-full bg-slate-700" />
@@ -404,13 +402,12 @@ export function TemplatesGallery({
         {/* ── RIGHT PANEL - Preview (desktop only) ── */}
         {preview && (
           <div
-            className="hidden sm:flex"
+            className="hidden sm:flex flex-col overflow-hidden"
             style={{
               width: 260,
               flexShrink: 0,
               borderLeft: "1px solid rgba(255,255,255,0.06)",
               background: "rgba(8,12,24,0.8)",
-              flexDirection: "column",
             }}
           >
             <div

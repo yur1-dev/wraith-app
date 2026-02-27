@@ -268,14 +268,14 @@ export function ExecutionHistoryPanel({ onClose }: ExecutionHistoryPanelProps) {
     <>
       {/* Mobile backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm sm:hidden"
+        className="fixed inset-0 z-[99989] bg-black/60 backdrop-blur-sm sm:hidden"
         onClick={onClose}
       />
 
       <div
         className={[
           // Mobile: slide up from bottom as a sheet
-          "fixed z-50 flex flex-col",
+          "fixed z-[99990] flex flex-col",
           // Mobile: full width, 85vh tall, rounded top corners
           "inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl",
           // sm+: right-side panel, full height, fixed width
