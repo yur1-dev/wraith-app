@@ -41,8 +41,7 @@ import { NodePropertiesPanel } from "./panels/NodePropertiesPanel";
 import { FlowControls } from "./panels/FlowControls";
 import { Header } from "./Header";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
-import { Trash2, Maximize2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Maximize2 } from "lucide-react";
 
 const nodeTypes: NodeTypes = {
   trigger: TriggerNode,
@@ -153,17 +152,6 @@ function FlowInner({
     setSelectedNode(null);
   }, [setSelectedNode]);
 
-  const deleteSelectedNodes = useCallback(() => {
-    const selectedIds = nodesRef.current
-      .filter((n) => n.selected)
-      .map((n) => n.id);
-    if (selectedIds.length === 0) return;
-    selectedIds.forEach((id) => deleteNode(id));
-    setSelectedNode(null);
-  }, [deleteNode, setSelectedNode]);
-
-  const selectedNodesCount = nodes.filter((n) => n.selected).length;
-
   return (
     <ReactFlow
       nodes={nodes}
@@ -258,34 +246,6 @@ function FlowInner({
           <Maximize2 size={15} />
         </button>
       </Panel>
-
-      {/* Selection toolbar */}
-      {selectedNodesCount > 0 && (
-        <Panel position="bottom-center" className="mb-6">
-          <div
-            className="rounded-xl px-5 py-3 flex items-center gap-4 shadow-2xl"
-            style={{
-              background: "rgba(20, 26, 42, 0.9)",
-              border: "1px solid rgba(56, 189, 248, 0.15)",
-              backdropFilter: "blur(20px)",
-            }}
-          >
-            <span className="text-sm text-cyan-400 font-medium">
-              {selectedNodesCount} selected
-            </span>
-            <div className="w-px h-5 bg-white/10" />
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={deleteSelectedNodes}
-              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-medium"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete
-            </Button>
-          </div>
-        </Panel>
-      )}
     </ReactFlow>
   );
 }

@@ -38,31 +38,30 @@ const USDC: Record<number, string> = {
   59144: "0x176211869cA2b568f2A7D4EE941E073a821EE1ff",
 };
 
-// FIX: Canonical protocol names and their aliases from the frontend
-// Maps any incoming protocol string → the canonical key used in the switch
+// FIX: Across does NOT support all chain pairs. Known disabled routes:
+// Arbitrum <-> Optimism is ROUTE_NOT_ENABLED on Across.
+// For these pairs, fall back to Hop automatically.
+const ACROSS_UNSUPPORTED_PAIRS = new Set([
+  "Arbitrum:Optimism",
+  "Optimism:Arbitrum",
+]);
+
 const PROTOCOL_ALIASES: Record<string, string> = {
-  // Across
   across: "Across",
   Across: "Across",
-  // Hop
   hop: "Hop",
   Hop: "Hop",
   "hop-protocol": "Hop",
-  // Synapse
   synapse: "Synapse",
   Synapse: "Synapse",
-  // LayerZero — not natively implemented; route to Across as the best
-  // gas-efficient alternative. Remove this mapping if you implement LayerZero.
   layerzero: "Across",
   LayerZero: "Across",
   "layer-zero": "Across",
   lz: "Across",
-  // Stargate (LayerZero-based) — same fallback
   stargate: "Across",
   Stargate: "Across",
 };
 
-// FIX: Chain name aliases — the frontend may send lowercase or kebab-case
 const CHAIN_ALIASES: Record<string, string> = {
   ethereum: "Ethereum",
   Ethereum: "Ethereum",
@@ -141,6 +140,15 @@ async function fetchAcrossQuote(
     throw new Error(`Across does not support origin chain: ${fromChain}`);
   if (!destId)
     throw new Error(`Across does not support destination chain: ${toChain}`);
+
+  // FIX: Pre-check known unsupported pairs before hitting the API
+  const pairKey = `${fromChain}:${toChain}`;
+  if (ACROSS_UNSUPPORTED_PAIRS.has(pairKey)) {
+    throw new Error(
+      `Across does not support route: ${fromChain} → ${toChain}. Try Hop instead.`,
+    );
+  }
+
   const inputToken = USDC[originId];
   const outputToken = USDC[destId];
   if (!inputToken || !outputToken)
@@ -159,6 +167,10 @@ async function fetchAcrossQuote(
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    // FIX: If Across returns ROUTE_NOT_ENABLED, throw a clear error so caller can fallback
+    if (body.includes("ROUTE_NOT_ENABLED")) {
+      throw new Error(`Across route not enabled: ${fromChain} → ${toChain}`);
+    }
     throw new Error(`Across API error ${res.status}: ${body.slice(0, 120)}`);
   }
   const data = await res.json();
@@ -303,7 +315,6 @@ export async function GET(request: Request) {
     searchParams.get("amountUsd") ?? searchParams.get("amount") ?? "100",
   );
 
-  // FIX: Validate required params before normalizing
   if (!rawProtocol || !rawFromChain || !rawToChain) {
     return NextResponse.json(
       { error: "protocol, fromChain, toChain are required" },
@@ -311,38 +322,28 @@ export async function GET(request: Request) {
     );
   }
 
-  // FIX: Normalize protocol and chain names via alias maps
   const protocol = PROTOCOL_ALIASES[rawProtocol];
   const fromChain = CHAIN_ALIASES[rawFromChain];
   const toChain = CHAIN_ALIASES[rawToChain];
 
-  // FIX: Give a helpful error if protocol is unrecognized (not just "Unknown protocol")
   if (!protocol) {
     return NextResponse.json(
       {
-        error: `Unsupported protocol: "${rawProtocol}". Supported: Across, Hop, Synapse (layerzero/stargate are routed via Across).`,
-        supported: Object.keys(PROTOCOL_ALIASES).filter(
-          (k) => k === PROTOCOL_ALIASES[k], // only show canonical names
-        ),
+        error: `Unsupported protocol: "${rawProtocol}". Supported: Across, Hop, Synapse.`,
       },
       { status: 400 },
     );
   }
 
-  // FIX: Give a helpful error if chain names are unrecognized
   if (!fromChain) {
     return NextResponse.json(
-      {
-        error: `Unrecognized fromChain: "${rawFromChain}". Check the chain name spelling.`,
-      },
+      { error: `Unrecognized fromChain: "${rawFromChain}".` },
       { status: 400 },
     );
   }
   if (!toChain) {
     return NextResponse.json(
-      {
-        error: `Unrecognized toChain: "${rawToChain}". Check the chain name spelling.`,
-      },
+      { error: `Unrecognized toChain: "${rawToChain}".` },
       { status: 400 },
     );
   }
@@ -360,7 +361,6 @@ export async function GET(request: Request) {
     );
   }
 
-  // FIX: Warn in response if protocol was aliased (e.g. layerzero → Across)
   const wasAliased = protocol !== rawProtocol;
   const aliasNote = wasAliased
     ? `"${rawProtocol}" is not directly supported; using ${protocol} as the closest equivalent.`
@@ -382,9 +382,31 @@ export async function GET(request: Request) {
 
   try {
     let data: unknown;
+    let usedProtocol = protocol;
+
     switch (protocol) {
       case "Across":
-        data = await fetchAcrossQuote(fromChain, toChain, amountUsd);
+        // FIX: Auto-fallback to Hop for unsupported Across routes
+        try {
+          data = await fetchAcrossQuote(fromChain, toChain, amountUsd);
+        } catch (acrossErr: any) {
+          const msg = acrossErr?.message ?? "";
+          if (
+            (msg.includes("route not enabled") ||
+              msg.includes("ROUTE_NOT_ENABLED") ||
+              msg.includes("does not support route")) &&
+            HOP_SLUGS[fromChain] &&
+            HOP_SLUGS[toChain]
+          ) {
+            console.warn(
+              `[bridge-quote] Across unsupported for ${fromChain}→${toChain}, falling back to Hop`,
+            );
+            data = await fetchHopQuote(fromChain, toChain, amountUsd);
+            usedProtocol = "Hop";
+          } else {
+            throw acrossErr;
+          }
+        }
         break;
       case "Hop":
         data = await fetchHopQuote(fromChain, toChain, amountUsd);
@@ -393,21 +415,25 @@ export async function GET(request: Request) {
         data = await fetchSynapseQuote(fromChain, toChain, amountUsd);
         break;
       default:
-        // This should never be reached due to alias map validation above
         return NextResponse.json(
           { error: `Unknown protocol: ${protocol}` },
           { status: 400 },
         );
     }
 
-    // Attach alias note if protocol was remapped
-    const response = aliasNote
-      ? { ...(data as object), _note: aliasNote }
-      : data;
+    const fallbackNote =
+      usedProtocol !== protocol
+        ? `Across does not support ${fromChain}→${toChain}; automatically used Hop instead.`
+        : undefined;
+
+    const response = {
+      ...(data as object),
+      ...(aliasNote ? { _note: aliasNote } : {}),
+      ...(fallbackNote ? { _fallback: fallbackNote } : {}),
+    };
 
     cache.set(key, { data: response, ts: now });
 
-    // Prune stale cache entries
     if (cache.size > 200) {
       for (const [k, v] of cache.entries()) {
         if (now - v.ts > 300_000) cache.delete(k);
@@ -431,7 +457,6 @@ export async function GET(request: Request) {
       "|",
       msg,
     );
-    // Return a graceful estimate instead of a hard 500 for timeout errors
     if (msg.includes("timeout") || msg.includes("aborted")) {
       const estimate = {
         protocol,
