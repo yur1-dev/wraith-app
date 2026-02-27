@@ -361,3 +361,15 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/* 
+  Fix shadcn Dialog z-index — default is z-50 which sits behind 
+  RunFlowDialog (z-99999) and other overlays.
+  Add this to your globals.css
+*/
+[data-radix-dialog-overlay] {
+  z-index: 999998 !important;
+}
+[data-radix-dialog-content] {
+  z-index: 999999 !important;
+}

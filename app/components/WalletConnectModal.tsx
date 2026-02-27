@@ -30,7 +30,6 @@ export function WalletConnectModal({
   const handleConnect = async (type: "phantom" | "metamask") => {
     setError(null);
     setConnecting(type);
-
     try {
       if (type === "phantom") {
         await connectPhantom();
@@ -47,14 +46,20 @@ export function WalletConnectModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* 
+        Override shadcn DialogContent z-index — by default it's z-50 which sits
+        BEHIND RunFlowDialog (z-99999) and FlowControls bottom sheet.
+        We force it to z-[999999] so it always wins.
+      */}
       <DialogContent
-        className="sm:max-w-md overflow-hidden p-0 border-0"
+        className="sm:max-w-md overflow-hidden p-0 border-0 !z-[999999]"
         style={{
           background: "rgba(2, 6, 23, 0.98)",
           border: "1px solid rgba(34, 211, 238, 0.2)",
           boxShadow:
             "0 0 0 1px rgba(34,211,238,0.05), 0 24px 48px rgba(0,0,0,0.8), 0 0 60px rgba(34,211,238,0.05)",
           backdropFilter: "blur(20px)",
+          zIndex: 999999,
         }}
       >
         {/* Top accent line */}
@@ -100,18 +105,11 @@ export function WalletConnectModal({
                   "rgba(20, 26, 42, 0.6)";
               }}
             >
-              {/* Phantom logo */}
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
                 style={{ background: "rgba(168, 85, 247, 0.15)" }}
               >
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 128 128"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
+                <svg width="28" height="28" viewBox="0 0 128 128" fill="none">
                   <rect width="128" height="128" rx="64" fill="#AB9FF2" />
                   <path
                     fillRule="evenodd"
@@ -121,14 +119,12 @@ export function WalletConnectModal({
                   />
                 </svg>
               </div>
-
               <div className="flex-1 text-left">
                 <div className="font-semibold text-white text-sm">Phantom</div>
                 <div className="text-xs text-slate-400">
                   Solana • Most Popular
                 </div>
               </div>
-
               {connecting === "phantom" ? (
                 <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
               ) : (
@@ -160,7 +156,6 @@ export function WalletConnectModal({
                   "rgba(20, 26, 42, 0.6)";
               }}
             >
-              {/* MetaMask logo */}
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
                 style={{ background: "rgba(245, 158, 11, 0.15)" }}
@@ -233,14 +228,12 @@ export function WalletConnectModal({
                   />
                 </svg>
               </div>
-
               <div className="flex-1 text-left">
                 <div className="font-semibold text-white text-sm">MetaMask</div>
                 <div className="text-xs text-slate-400">
                   Ethereum & EVM chains
                 </div>
               </div>
-
               {connecting === "metamask" ? (
                 <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
               ) : (
