@@ -83,9 +83,11 @@ function NodeResultRow({ result }: { result: ExecutionResult }) {
         ) : (
           <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
         )}
-        <span className="text-xs font-mono text-slate-300 flex-1">{label}</span>
+        <span className="text-xs font-mono text-slate-300 flex-1 truncate">
+          {label}
+        </span>
         {result.signature && (
-          <span className="text-[10px] font-mono text-slate-600 truncate max-w-[100px]">
+          <span className="hidden sm:block text-[10px] font-mono text-slate-600 truncate max-w-[80px]">
             {result.signature.slice(0, 16)}…
           </span>
         )}
@@ -98,12 +100,17 @@ function NodeResultRow({ result }: { result: ExecutionResult }) {
 
       {open && (
         <div className="px-3 pb-3 pt-1 border-t border-slate-800 bg-slate-950/50">
+          {result.signature && (
+            <div className="sm:hidden mb-2 text-[10px] font-mono text-slate-500 truncate">
+              sig: {result.signature.slice(0, 20)}…
+            </div>
+          )}
           {result.error ? (
-            <div className="text-[11px] font-mono text-red-400 bg-red-500/10 px-2 py-1.5 rounded border border-red-500/20">
+            <div className="text-[11px] font-mono text-red-400 bg-red-500/10 px-2 py-1.5 rounded border border-red-500/20 break-all">
               {result.error}
             </div>
           ) : (
-            <pre className="text-[10px] font-mono text-slate-400 whitespace-pre-wrap break-all leading-relaxed">
+            <pre className="text-[10px] font-mono text-slate-400 whitespace-pre-wrap break-all leading-relaxed overflow-x-auto">
               {JSON.stringify(result.output, null, 2)}
             </pre>
           )}
@@ -139,7 +146,7 @@ function RunCard({
     >
       <button
         onClick={() => setExpanded((p) => !p)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+        className="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
       >
         <div
           className={`w-2 h-2 rounded-full shrink-0 ${
@@ -151,7 +158,7 @@ function RunCard({
           }`}
         />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-mono text-slate-300 font-medium">
               {run.flowId.slice(0, 8)}…
             </span>
@@ -167,7 +174,7 @@ function RunCard({
               {run.status}
             </span>
           </div>
-          <div className="flex items-center gap-3 mt-0.5">
+          <div className="flex items-center gap-2 sm:gap-3 mt-0.5 flex-wrap">
             <span className="text-[10px] font-mono text-slate-600">
               {timeAgo(run.startedAt)}
             </span>
@@ -179,7 +186,7 @@ function RunCard({
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {passed > 0 && (
             <span className="text-[10px] font-mono text-emerald-400">
               {passed}✓
@@ -200,14 +207,14 @@ function RunCard({
 
       {expanded && (
         <>
-          <div className="px-4 pb-1 flex items-center gap-1.5">
-            <Wallet className="w-3 h-3 text-slate-600" />
-            <span className="text-[10px] font-mono text-slate-600">
+          <div className="px-3 sm:px-4 pb-1 flex items-center gap-1.5">
+            <Wallet className="w-3 h-3 text-slate-600 shrink-0" />
+            <span className="text-[10px] font-mono text-slate-600 truncate">
               {run.walletAddress.slice(0, 8)}…{run.walletAddress.slice(-6)}
             </span>
           </div>
           {run.results.length > 0 && (
-            <div className="px-4 pb-4 space-y-1.5">
+            <div className="px-3 sm:px-4 pb-4 space-y-1.5">
               {run.results.map((result) => (
                 <NodeResultRow key={result.nodeId} result={result} />
               ))}
@@ -227,7 +234,6 @@ export function ExecutionHistoryPanel({ onClose }: ExecutionHistoryPanelProps) {
   const [runs, setRuns] = useState<FlowRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "completed" | "failed">("all");
-  const [lastCount, setLastCount] = useState(0);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchHistory = async (silent = false) => {
@@ -238,7 +244,6 @@ export function ExecutionHistoryPanel({ onClose }: ExecutionHistoryPanelProps) {
         const data = await res.json();
         const incoming: FlowRun[] = data.executions || [];
         setRuns(incoming);
-        setLastCount(incoming.length);
       }
     } catch {
     } finally {
@@ -246,12 +251,10 @@ export function ExecutionHistoryPanel({ onClose }: ExecutionHistoryPanelProps) {
     }
   };
 
-  // Initial fetch
   useEffect(() => {
     fetchHistory();
   }, []);
 
-  // Poll every 2s to catch new runs from RunFlowDialog
   useEffect(() => {
     pollRef.current = setInterval(() => fetchHistory(true), 2000);
     return () => {
@@ -262,116 +265,138 @@ export function ExecutionHistoryPanel({ onClose }: ExecutionHistoryPanelProps) {
   const filtered = runs.filter((r) => filter === "all" || r.status === filter);
 
   return (
-    <div
-      className="fixed inset-y-0 right-0 w-[420px] z-50 flex flex-col"
-      style={{
-        background: "rgba(6,10,24,0.97)",
-        borderLeft: "1px solid rgba(56,189,248,0.12)",
-        backdropFilter: "blur(24px)",
-        boxShadow: "-24px 0 48px rgba(0,0,0,0.6)",
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800/60">
-        <div className="flex items-center gap-2.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
-          <span className="text-xs font-mono font-bold tracking-[0.15em] text-cyan-400">
-            EXECUTION HISTORY
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => fetchHistory()}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
+    <>
+      {/* Mobile backdrop */}
       <div
-        className="h-px w-full"
-        style={{
-          background:
-            "linear-gradient(90deg, rgba(34,211,238,0.4), transparent 60%)",
-        }}
+        className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm sm:hidden"
+        onClick={onClose}
       />
 
-      {/* Stats */}
-      <div className="flex items-center gap-4 px-5 py-3 border-b border-slate-800/40">
-        <div className="flex items-center gap-1.5">
-          <Zap className="w-3 h-3 text-slate-600" />
-          <span className="text-[10px] font-mono text-slate-500">
-            {runs.length} total
-          </span>
+      <div
+        className={[
+          // Mobile: slide up from bottom as a sheet
+          "fixed z-50 flex flex-col",
+          // Mobile: full width, 85vh tall, rounded top corners
+          "inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl",
+          // sm+: right-side panel, full height, fixed width
+          "sm:inset-y-0 sm:right-0 sm:left-auto sm:bottom-auto sm:w-[420px] sm:max-h-none sm:rounded-none",
+        ].join(" ")}
+        style={{
+          background: "rgba(6,10,24,0.97)",
+          borderTop: "1px solid rgba(56,189,248,0.15)",
+          borderLeft: "1px solid rgba(56,189,248,0.12)",
+          backdropFilter: "blur(24px)",
+          boxShadow:
+            "0 -24px 48px rgba(0,0,0,0.5), -24px 0 48px rgba(0,0,0,0.3)",
+        }}
+      >
+        {/* Mobile drag handle */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-10 h-1 rounded-full bg-slate-700" />
         </div>
-        <div className="flex items-center gap-1.5">
-          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-          <span className="text-[10px] font-mono text-slate-500">
-            {runs.filter((r) => r.status === "completed").length} passed
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <XCircle className="w-3 h-3 text-red-500" />
-          <span className="text-[10px] font-mono text-slate-500">
-            {runs.filter((r) => r.status === "failed").length} failed
-          </span>
-        </div>
-        {/* Live indicator */}
-        <div className="ml-auto flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-          <span className="text-[10px] font-mono text-slate-600">live</span>
-        </div>
-      </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-1 px-5 py-2.5 border-b border-slate-800/40">
-        {(["all", "completed", "failed"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className="px-3 py-1 rounded-md text-[10px] font-mono font-semibold tracking-wider transition-all"
-            style={{
-              background: filter === f ? "rgba(34,211,238,0.1)" : "transparent",
-              color: filter === f ? "rgb(34,211,238)" : "rgb(100,116,139)",
-              border: `1px solid ${filter === f ? "rgba(34,211,238,0.3)" : "transparent"}`,
-            }}
-          >
-            {f.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
-      {/* Run list */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
-        {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="flex items-center gap-2 text-slate-600">
-              <Clock className="w-4 h-4 animate-spin" />
-              <span className="text-xs font-mono">Loading…</span>
-            </div>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 gap-2">
-            <Zap className="w-6 h-6 text-slate-700" />
-            <span className="text-xs font-mono text-slate-600">
-              {filter === "all"
-                ? "No runs yet — execute a flow to see history"
-                : `No ${filter} runs`}
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-800/60 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
+            <span className="text-xs font-mono font-bold tracking-[0.15em] text-cyan-400">
+              EXECUTION HISTORY
             </span>
           </div>
-        ) : (
-          filtered.map((run, i) => (
-            <RunCard key={run.flowId} run={run} defaultOpen={i === 0} />
-          ))
-        )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchHistory()}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="h-px w-full shrink-0"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(34,211,238,0.4), transparent 60%)",
+          }}
+        />
+
+        {/* Stats */}
+        <div className="flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 sm:py-3 border-b border-slate-800/40 shrink-0 overflow-x-auto">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Zap className="w-3 h-3 text-slate-600" />
+            <span className="text-[10px] font-mono text-slate-500">
+              {runs.length} total
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+            <span className="text-[10px] font-mono text-slate-500">
+              {runs.filter((r) => r.status === "completed").length} passed
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <XCircle className="w-3 h-3 text-red-500" />
+            <span className="text-[10px] font-mono text-slate-500">
+              {runs.filter((r) => r.status === "failed").length} failed
+            </span>
+          </div>
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            <span className="text-[10px] font-mono text-slate-600">live</span>
+          </div>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex gap-1 px-4 sm:px-5 py-2 sm:py-2.5 border-b border-slate-800/40 shrink-0">
+          {(["all", "completed", "failed"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className="flex-1 sm:flex-none px-2 sm:px-3 py-1 rounded-md text-[10px] font-mono font-semibold tracking-wider transition-all"
+              style={{
+                background:
+                  filter === f ? "rgba(34,211,238,0.1)" : "transparent",
+                color: filter === f ? "rgb(34,211,238)" : "rgb(100,116,139)",
+                border: `1px solid ${filter === f ? "rgba(34,211,238,0.3)" : "transparent"}`,
+              }}
+            >
+              {f.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        {/* Run list */}
+        <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 sm:py-4 space-y-2 overscroll-contain">
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="flex items-center gap-2 text-slate-600">
+                <Clock className="w-4 h-4 animate-spin" />
+                <span className="text-xs font-mono">Loading…</span>
+              </div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-32 gap-2">
+              <Zap className="w-6 h-6 text-slate-700" />
+              <span className="text-xs font-mono text-slate-600 text-center px-4">
+                {filter === "all"
+                  ? "No runs yet — execute a flow to see history"
+                  : `No ${filter} runs`}
+              </span>
+            </div>
+          ) : (
+            filtered.map((run, i) => (
+              <RunCard key={run.flowId} run={run} defaultOpen={i === 0} />
+            ))
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

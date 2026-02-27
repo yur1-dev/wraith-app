@@ -20,7 +20,6 @@ import {
   List,
   AlertTriangle,
   ArrowLeftRight,
-  Zap,
 } from "lucide-react";
 import { useTelegram } from "@/lib/hooks/useTelegram";
 import { useWallet } from "@/lib/hooks/useWallet";
@@ -28,11 +27,33 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { WalletEntry } from "@/app/components/nodes/MultiWalletNode";
 
+// ─── Utilities ───────────────────────────────────────────────────────────────
 const str = (val: unknown, fallback = ""): string =>
   typeof val === "string" ? val : fallback;
 const bool = (val: unknown, fallback = false): boolean =>
   typeof val === "boolean" ? val : fallback;
 
+function shortAddr(addr: string) {
+  if (!addr || addr.length < 8) return addr || "—";
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+function isValidAddress(addr: string) {
+  return (
+    /^0x[0-9a-fA-F]{40}$/.test(addr) ||
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)
+  );
+}
+function isValidPrivateKey(key: string, chain: string) {
+  if (!key) return false;
+  if (chain === "solana") return /^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(key);
+  return /^(0x)?[0-9a-fA-F]{64}$/.test(key);
+}
+function maskKey(key: string) {
+  if (!key) return "";
+  return key.slice(0, 4) + "••••••••" + key.slice(-4);
+}
+
+// ─── Static data ─────────────────────────────────────────────────────────────
 const NODE_COLORS: Record<string, string> = {
   trigger: "#a855f7",
   multiWallet: "#f97316",
@@ -90,8 +111,6 @@ const WALLET_CHAINS = [
   { id: "optimism", label: "Optimism", color: "#FF0420" },
   { id: "polygon", label: "Polygon", color: "#8247E5" },
 ];
-
-// ── Swap-specific constants ───────────────────────────────────────────────────
 
 const TOKENS_BY_CHAIN: Record<string, string[]> = {
   solana: [
@@ -154,7 +173,63 @@ const TOKEN_COLORS: Record<string, string> = {
 
 const SLIPPAGE_PRESETS = [0.1, 0.5, 1.0, 3.0];
 
-// ── Token badge ───────────────────────────────────────────────────────────────
+const CHAINS_EVM = [
+  { value: "Ethereum", label: "Ethereum" },
+  { value: "Arbitrum", label: "Arbitrum" },
+  { value: "Optimism", label: "Optimism" },
+  { value: "Polygon", label: "Polygon" },
+  { value: "Base", label: "Base" },
+  { value: "Avalanche", label: "Avalanche" },
+  { value: "BSC", label: "BSC" },
+  { value: "zkSync", label: "zkSync" },
+  { value: "Linea", label: "Linea" },
+];
+
+const BRIDGE_PROTOCOL_CHAINS: Record<
+  string,
+  { value: string; label: string }[]
+> = {
+  Across: [
+    "Ethereum",
+    "Arbitrum",
+    "Optimism",
+    "Polygon",
+    "Base",
+    "Linea",
+    "zkSync",
+  ].map((c) => ({ value: c, label: c })),
+  Hop: ["Ethereum", "Arbitrum", "Optimism", "Polygon", "Base"].map((c) => ({
+    value: c,
+    label: c,
+  })),
+  Synapse: [
+    "Ethereum",
+    "Arbitrum",
+    "Optimism",
+    "Polygon",
+    "Base",
+    "Avalanche",
+    "BSC",
+  ].map((c) => ({ value: c, label: c })),
+};
+
+function chainColor(chainId: string) {
+  return WALLET_CHAINS.find((c) => c.id === chainId)?.color ?? "#64748b";
+}
+
+// ─── Primitive UI ─────────────────────────────────────────────────────────────
+function FieldGroup({ children }: { children: React.ReactNode }) {
+  return <div className="space-y-1.5">{children}</div>;
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[9px] font-mono font-bold tracking-widest text-slate-500 uppercase">
+      {children}
+    </div>
+  );
+}
+
 function TokenBadge({ token }: { token: string }) {
   const color = TOKEN_COLORS[token] ?? "#64748b";
   return (
@@ -167,45 +242,6 @@ function TokenBadge({ token }: { token: string }) {
       }}
     >
       {token}
-    </div>
-  );
-}
-
-function shortAddr(addr: string) {
-  if (!addr || addr.length < 8) return addr || "—";
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
-function isValidAddress(addr: string) {
-  return (
-    /^0x[0-9a-fA-F]{40}$/.test(addr) ||
-    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)
-  );
-}
-
-function isValidPrivateKey(key: string, chain: string) {
-  if (!key) return false;
-  if (chain === "solana") return /^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(key);
-  return /^(0x)?[0-9a-fA-F]{64}$/.test(key);
-}
-
-function maskKey(key: string) {
-  if (!key) return "";
-  return key.slice(0, 4) + "••••••••" + key.slice(-4);
-}
-
-function chainColor(chainId: string) {
-  return WALLET_CHAINS.find((c) => c.id === chainId)?.color ?? "#64748b";
-}
-
-function FieldGroup({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-1.5">{children}</div>;
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[9px] font-mono font-bold tracking-widest text-slate-500 uppercase">
-      {children}
     </div>
   );
 }
@@ -284,7 +320,6 @@ function StyledCheckbox({
   );
 }
 
-// ── Time Picker — clean drum-roller ──────────────────────────────────────────
 function TimePickerInput({
   value,
   onChange,
@@ -298,27 +333,27 @@ function TimePickerInput({
   const hours = Math.min(23, Math.max(0, parseInt(parts[0] ?? "0", 10) || 0));
   const minutes = Math.min(59, Math.max(0, parseInt(parts[1] ?? "0", 10) || 0));
   const pad = (n: number) => String(n).padStart(2, "0");
+  const spinH = (dir: 1 | -1) =>
+    onChange(`${pad((hours + dir + 24) % 24)}:${pad(minutes)}`);
+  const spinM = (dir: 1 | -1) =>
+    onChange(`${pad(hours)}:${pad((minutes + dir * 5 + 60) % 60)}`);
 
-  const spinH = (dir: 1 | -1) => {
-    const next = (hours + dir + 24) % 24;
-    onChange(`${pad(next)}:${pad(minutes)}`);
-  };
-  const spinM = (dir: 1 | -1) => {
-    const next = (minutes + dir * 5 + 60) % 60;
-    onChange(`${pad(hours)}:${pad(next)}`);
-  };
-
-  const drumCol = (
-    val: number,
-    onUp: () => void,
-    onDown: () => void,
-    label: string,
-  ) => (
-    <div className="flex flex-col items-center gap-0.5">
+  const DrumCol = ({
+    val,
+    onUp,
+    onDown,
+    lbl,
+  }: {
+    val: number;
+    onUp: () => void;
+    onDown: () => void;
+    lbl: string;
+  }) => (
+    <div className="flex flex-col items-center">
       <button
         type="button"
         onClick={onUp}
-        className="w-8 h-6 flex items-center justify-center rounded-t cursor-pointer transition-all active:scale-95"
+        className="w-8 h-6 flex items-center justify-center rounded-t cursor-pointer"
         style={{
           background: `${accent}18`,
           border: `1px solid ${accent}25`,
@@ -345,7 +380,6 @@ function TimePickerInput({
           border: `1px solid ${accent}35`,
           color: accent,
           fontSize: 17,
-          letterSpacing: "-0.02em",
         }}
       >
         {pad(val)}
@@ -353,7 +387,7 @@ function TimePickerInput({
       <button
         type="button"
         onClick={onDown}
-        className="w-8 h-6 flex items-center justify-center rounded-b cursor-pointer transition-all active:scale-95"
+        className="w-8 h-6 flex items-center justify-center rounded-b cursor-pointer"
         style={{
           background: `${accent}18`,
           border: `1px solid ${accent}25`,
@@ -373,32 +407,29 @@ function TimePickerInput({
       >
         <ChevronDown className="w-3 h-3" />
       </button>
-      <span className="text-[7px] font-mono text-slate-600 uppercase tracking-widest mt-0.5">
-        {label}
+      <span className="text-[7px] font-mono text-slate-600 uppercase tracking-widest mt-1">
+        {lbl}
       </span>
     </div>
   );
 
   return (
     <div className="flex items-center gap-2">
-      {drumCol(
-        hours,
-        () => spinH(1),
-        () => spinH(-1),
-        "hr",
-      )}
-      <span
-        className="text-slate-500 font-mono font-bold text-lg mb-4 select-none"
-        style={{ lineHeight: 1 }}
-      >
+      <DrumCol
+        val={hours}
+        onUp={() => spinH(1)}
+        onDown={() => spinH(-1)}
+        lbl="hr"
+      />
+      <span className="text-slate-500 font-mono font-bold text-lg mb-4 select-none">
         :
       </span>
-      {drumCol(
-        minutes,
-        () => spinM(1),
-        () => spinM(-1),
-        "min",
-      )}
+      <DrumCol
+        val={minutes}
+        onUp={() => spinM(1)}
+        onDown={() => spinM(-1)}
+        lbl="min"
+      />
       <span
         className="mb-4 text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded self-center"
         style={{
@@ -428,78 +459,66 @@ function StyledSelect({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropStyle, setDropStyle] = useState<React.CSSProperties>({});
+  const trigRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
   const selected = options.find((o) => o.value === value);
 
-  const updatePosition = useCallback(() => {
-    if (!triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    const dropdownHeight = Math.min(options.length * 36 + 8, 220);
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const showAbove = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
-    setDropdownStyle({
+  const calcPos = useCallback(() => {
+    if (!trigRef.current) return;
+    const r = trigRef.current.getBoundingClientRect();
+    const h = Math.min(options.length * 36 + 8, 220);
+    const below = window.innerHeight - r.bottom - 8;
+    setDropStyle({
       position: "fixed",
-      left: `${rect.left}px`,
-      width: `${rect.width}px`,
+      left: `${r.left}px`,
+      width: `${r.width}px`,
       zIndex: 99999,
-      top: showAbove
-        ? `${rect.top - dropdownHeight - 4}px`
-        : `${rect.bottom + 4}px`,
+      top: below < h && r.top > h ? `${r.top - h - 4}px` : `${r.bottom + 4}px`,
     });
   }, [options.length]);
 
-  const handleOpen = () => {
-    updatePosition();
-    setOpen((o) => !o);
-  };
-
   useEffect(() => {
     if (!open) return;
-    function handler(e: MouseEvent) {
-      const target = e.target as Node;
-      if (
-        triggerRef.current?.contains(target) ||
-        dropdownRef.current?.contains(target)
-      )
-        return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (trigRef.current?.contains(t) || dropRef.current?.contains(t)) return;
       setOpen(false);
-    }
+    };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", calcPos, true);
+    window.addEventListener("resize", calcPos);
     return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", calcPos, true);
+      window.removeEventListener("resize", calcPos);
     };
-  }, [open, updatePosition]);
+  }, [open, calcPos]);
 
   const dropdown = open ? (
     <div
-      ref={dropdownRef}
+      ref={dropRef}
       style={{
-        ...dropdownStyle,
-        background: "rgba(2, 6, 23, 0.99)",
+        ...dropStyle,
+        background: "rgba(2,6,23,0.99)",
         border: `1px solid ${accent}44`,
         borderRadius: "8px",
-        boxShadow: `0 16px 48px rgba(0,0,0,0.9), 0 0 24px ${accent}15`,
+        boxShadow: `0 16px 48px rgba(0,0,0,0.9)`,
         backdropFilter: "blur(24px)",
         overflow: "hidden",
       }}
     >
       <div
         style={{
-          height: "1px",
+          height: 1,
           background: `linear-gradient(90deg, ${accent}90, transparent 70%)`,
         }}
       />
-      <div style={{ padding: "4px 0", maxHeight: "210px", overflowY: "auto" }}>
+      <div style={{ padding: "4px 0", maxHeight: 210, overflowY: "auto" }}>
         {options.map((opt) => {
           const active = opt.value === value;
           return (
@@ -510,7 +529,7 @@ function StyledSelect({
                 onChange(opt.value);
                 setOpen(false);
               }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer transition-all duration-100"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer transition-all"
               style={
                 active
                   ? { background: `${accent}18`, color: accent }
@@ -550,12 +569,15 @@ function StyledSelect({
   return (
     <div className="relative w-full">
       <button
-        ref={triggerRef}
+        ref={trigRef}
         type="button"
-        onClick={handleOpen}
-        className="w-full h-8 flex items-center justify-between px-3 rounded-md text-xs font-mono transition-all duration-150 cursor-pointer"
+        onClick={() => {
+          calcPos();
+          setOpen((o) => !o);
+        }}
+        className="w-full h-8 flex items-center justify-between px-3 rounded-md text-xs font-mono transition-all cursor-pointer"
         style={{
-          background: open ? `${accent}12` : "rgba(2, 6, 23, 0.9)",
+          background: open ? `${accent}12` : "rgba(2,6,23,0.9)",
           border: open
             ? `1px solid ${accent}55`
             : "1px solid rgba(51,65,85,0.8)",
@@ -582,47 +604,7 @@ function StyledSelect({
   );
 }
 
-const CHAINS_EVM = [
-  { value: "Ethereum", label: "Ethereum" },
-  { value: "Arbitrum", label: "Arbitrum" },
-  { value: "Optimism", label: "Optimism" },
-  { value: "Polygon", label: "Polygon" },
-  { value: "Base", label: "Base" },
-  { value: "Avalanche", label: "Avalanche" },
-  { value: "BSC", label: "BSC" },
-  { value: "zkSync", label: "zkSync" },
-  { value: "Linea", label: "Linea" },
-];
-
-const BRIDGE_PROTOCOL_CHAINS: Record<
-  string,
-  { value: string; label: string }[]
-> = {
-  Across: [
-    "Ethereum",
-    "Arbitrum",
-    "Optimism",
-    "Polygon",
-    "Base",
-    "Linea",
-    "zkSync",
-  ].map((c) => ({ value: c, label: c })),
-  Hop: ["Ethereum", "Arbitrum", "Optimism", "Polygon", "Base"].map((c) => ({
-    value: c,
-    label: c,
-  })),
-  Synapse: [
-    "Ethereum",
-    "Arbitrum",
-    "Optimism",
-    "Polygon",
-    "Base",
-    "Avalanche",
-    "BSC",
-  ].map((c) => ({ value: c, label: c })),
-};
-
-// ── MultiWallet Panel ─────────────────────────────────────────────────────────
+// ─── MultiWallet sub-panel ────────────────────────────────────────────────────
 function MultiWalletPanel({
   nodeId,
   data,
@@ -657,7 +639,7 @@ function MultiWalletPanel({
   const readyCount = wallets.filter((w) => w.enabled && w.privateKey).length;
   const hasMissingKeys = wallets.some((w) => w.enabled && !w.privateKey);
 
-  const resetAddForm = () => {
+  const resetForm = () => {
     setNewAddress("");
     setNewPrivateKey("");
     setNewLabel("");
@@ -666,77 +648,73 @@ function MultiWalletPanel({
     setAddMode("manual");
   };
 
-  const addManualWallet = () => {
+  const addWallet = () => {
     if (!newAddress.trim() || !newPrivateKey.trim()) return;
-    const entry: WalletEntry = {
-      id: `w-${Date.now()}`,
-      address: newAddress.trim(),
-      privateKey: newPrivateKey.trim(),
-      label: newLabel.trim() || `Wallet ${wallets.length + 1}`,
-      chain: newChain,
-      enabled: true,
-      walletType: "manual",
-    };
-    updateNodeData(nodeId, { wallets: [...wallets, entry] });
-    resetAddForm();
+    updateNodeData(nodeId, {
+      wallets: [
+        ...wallets,
+        {
+          id: `w-${Date.now()}`,
+          address: newAddress.trim(),
+          privateKey: newPrivateKey.trim(),
+          label: newLabel.trim() || `Wallet ${wallets.length + 1}`,
+          chain: newChain,
+          enabled: true,
+          walletType: "manual",
+        } as WalletEntry,
+      ],
+    });
+    resetForm();
     setShowAddForm(false);
   };
 
-  const importConnectedWallet = (cw: (typeof connectedWallets)[0]) => {
+  const importConnected = (cw: (typeof connectedWallets)[0]) => {
     if (wallets.find((w) => w.address === cw.address)) return;
-    const entry: WalletEntry = {
-      id: `w-${Date.now()}`,
-      address: cw.address,
-      privateKey: "",
-      label: cw.label,
-      chain: cw.type === "phantom" ? "solana" : "ethereum",
-      enabled: true,
-      walletType: cw.type === "phantom" ? "phantom" : "metamask",
-    };
-    updateNodeData(nodeId, { wallets: [...wallets, entry] });
+    updateNodeData(nodeId, {
+      wallets: [
+        ...wallets,
+        {
+          id: `w-${Date.now()}`,
+          address: cw.address,
+          privateKey: "",
+          label: cw.label,
+          chain: cw.type === "phantom" ? "solana" : "ethereum",
+          enabled: true,
+          walletType: cw.type === "phantom" ? "phantom" : "metamask",
+        } as WalletEntry,
+      ],
+    });
     setShowAddForm(false);
-    resetAddForm();
+    resetForm();
   };
 
-  const removeWallet = (wid: string) =>
-    updateNodeData(nodeId, { wallets: wallets.filter((w) => w.id !== wid) });
-  const toggleWallet = (wid: string) =>
+  const removeWallet = (id: string) =>
+    updateNodeData(nodeId, { wallets: wallets.filter((w) => w.id !== id) });
+  const toggleWallet = (id: string) =>
     updateNodeData(nodeId, {
       wallets: wallets.map((w) =>
-        w.id === wid ? { ...w, enabled: !w.enabled } : w,
+        w.id === id ? { ...w, enabled: !w.enabled } : w,
       ),
     });
-  const updatePrivateKey = (wid: string, key: string) =>
+  const updatePK = (id: string, key: string) =>
     updateNodeData(nodeId, {
       wallets: wallets.map((w) =>
-        w.id === wid ? { ...w, privateKey: key } : w,
+        w.id === id ? { ...w, privateKey: key } : w,
       ),
     });
-  const updateWalletLabel = (wid: string, label: string) =>
+  const updateWalletLabel = (id: string, label: string) =>
     updateNodeData(nodeId, {
-      wallets: wallets.map((w) => (w.id === wid ? { ...w, label } : w)),
+      wallets: wallets.map((w) => (w.id === id ? { ...w, label } : w)),
     });
-  const copyAddress = (wid: string, addr: string) => {
+  const copyAddr = (id: string, addr: string) => {
     navigator.clipboard.writeText(addr).catch(() => {});
-    setCopiedId(wid);
+    setCopiedId(id);
     setTimeout(() => setCopiedId(null), 1500);
   };
 
   return (
     <div className="space-y-3">
-      <div
-        className="rounded-lg px-3 py-2"
-        style={{
-          background: "rgba(249,115,22,0.06)",
-          border: "1px solid rgba(249,115,22,0.12)",
-        }}
-      >
-        <p className="text-[9px] font-mono text-orange-300/70 leading-relaxed">
-          Runs all downstream nodes (Swap, Bridge, etc.) once per wallet. A
-          private key is required on each wallet to sign transactions.
-        </p>
-      </div>
-
+      {/* Execution mode */}
       <FieldGroup>
         <FieldLabel>Execution Mode</FieldLabel>
         <div className="grid grid-cols-2 gap-1">
@@ -786,6 +764,7 @@ function MultiWalletPanel({
         </div>
       </FieldGroup>
 
+      {/* Default network */}
       <FieldGroup>
         <FieldLabel>Default Network</FieldLabel>
         <StyledSelect
@@ -796,19 +775,20 @@ function MultiWalletPanel({
         />
       </FieldGroup>
 
+      {/* Wallet list header */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <div>
             <FieldLabel>Wallets</FieldLabel>
             <p className="text-[8px] font-mono text-slate-600 mt-0.5">
               {wallets.length === 0
-                ? "None added yet"
-                : `${readyCount}/${wallets.length} ready to execute`}
+                ? "None added"
+                : `${readyCount}/${wallets.length} ready`}
             </p>
           </div>
           <button
             onClick={() => {
-              if (showAddForm) resetAddForm();
+              if (showAddForm) resetForm();
               setShowAddForm((v) => !v);
             }}
             className="flex items-center gap-1 text-[9px] font-mono font-bold cursor-pointer transition-all px-2 py-1.5 rounded border"
@@ -819,7 +799,7 @@ function MultiWalletPanel({
             }}
           >
             <Plus className="w-3 h-3" />
-            {showAddForm ? "Cancel" : "Add Wallet"}
+            {showAddForm ? "Cancel" : "Add"}
           </button>
         </div>
 
@@ -832,13 +812,13 @@ function MultiWalletPanel({
             }}
           >
             <KeyRound className="w-3 h-3 text-red-400 shrink-0 mt-px" />
-            <p className="text-[8px] font-mono text-red-400/70 leading-relaxed">
-              Some wallets are missing a private key — they'll be skipped during
-              execution. Click the key icon on a wallet to add one.
+            <p className="text-[8px] font-mono text-red-400/70">
+              Some wallets missing private key — will be skipped.
             </p>
           </div>
         )}
 
+        {/* Add form */}
         {showAddForm && (
           <div
             className="rounded-xl p-3 space-y-2.5 mb-3"
@@ -873,26 +853,20 @@ function MultiWalletPanel({
                         }
                   }
                 >
-                  {m === "manual" ? "Enter Manually" : "Import Connected"}
+                  {m === "manual" ? "Manual" : "Import"}
                 </button>
               ))}
             </div>
 
             {addMode === "connected" ? (
               <div className="space-y-1.5">
-                <p className="text-[8px] font-mono text-slate-600 leading-relaxed">
-                  Wallets connected via Phantom or MetaMask. You'll still need
-                  to add the private key manually after importing.
-                </p>
                 {connectedWallets.length === 0 ? (
                   <div className="py-4 text-center text-[9px] font-mono text-slate-600 border border-dashed border-slate-700/40 rounded-lg">
-                    No wallets connected yet
+                    No wallets connected
                   </div>
                 ) : (
                   connectedWallets.map((cw) => {
-                    const alreadyAdded = wallets.find(
-                      (w) => w.address === cw.address,
-                    );
+                    const added = wallets.find((w) => w.address === cw.address);
                     return (
                       <div
                         key={cw.address}
@@ -906,20 +880,16 @@ function MultiWalletPanel({
                           <div className="text-[10px] font-mono font-bold text-slate-200 truncate">
                             {cw.label}
                           </div>
-                          <div className="text-[8px] font-mono text-slate-500 mt-0.5">
+                          <div className="text-[8px] font-mono text-slate-500">
                             {shortAddr(cw.address)}
-                          </div>
-                          <div className="text-[7px] font-mono text-slate-700 capitalize mt-0.5">
-                            {cw.type} ·{" "}
-                            {cw.type === "phantom" ? "Solana" : "Ethereum"}
                           </div>
                         </div>
                         <button
-                          onClick={() => importConnectedWallet(cw)}
-                          disabled={!!alreadyAdded}
-                          className="px-2 py-1 rounded text-[8px] font-mono font-bold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed border flex-shrink-0"
+                          onClick={() => importConnected(cw)}
+                          disabled={!!added}
+                          className="px-2 py-1 rounded text-[8px] font-mono font-bold cursor-pointer transition-all disabled:opacity-40 border shrink-0"
                           style={
-                            alreadyAdded
+                            added
                               ? {
                                   color: "rgba(100,116,139,0.4)",
                                   borderColor: "rgba(51,65,85,0.4)",
@@ -931,7 +901,7 @@ function MultiWalletPanel({
                                 }
                           }
                         >
-                          {alreadyAdded ? "Added" : "Import"}
+                          {added ? "Added" : "Import"}
                         </button>
                       </div>
                     );
@@ -947,85 +917,11 @@ function MultiWalletPanel({
                   <input
                     value={newLabel}
                     onChange={(e) => setNewLabel(e.target.value)}
-                    placeholder="e.g. Farming Wallet 1"
+                    placeholder="Farming Wallet 1"
                     autoComplete="off"
-                    name="mw-label-x9"
+                    name="mw-lbl"
                     className="w-full h-7 px-2.5 rounded bg-slate-950 border border-slate-700/60 text-cyan-100 text-[10px] font-mono placeholder:text-slate-700 focus:border-cyan-500/50 focus:outline-none transition-colors"
                   />
-                </div>
-                <div>
-                  <div className="text-[7px] font-mono text-slate-600 uppercase tracking-widest mb-1">
-                    Wallet Address (Public Key)
-                  </div>
-                  <input
-                    value={newAddress}
-                    onChange={(e) => setNewAddress(e.target.value)}
-                    placeholder={
-                      newChain === "solana"
-                        ? "7xKX... (Solana base58)"
-                        : "0x1234... (EVM hex)"
-                    }
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    name="mw-pubkey-x9"
-                    className={`w-full h-7 px-2.5 rounded bg-slate-950 text-cyan-100 text-[10px] font-mono placeholder:text-slate-700 focus:outline-none transition-colors border ${
-                      newAddress && !isValidAddress(newAddress)
-                        ? "border-red-500/50"
-                        : "border-slate-700/60 focus:border-cyan-500/50"
-                    }`}
-                  />
-                  {newAddress && !isValidAddress(newAddress) && (
-                    <p className="text-[7px] font-mono text-red-400/80 mt-1">
-                      Invalid address format
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <div className="text-[7px] font-mono text-slate-600 uppercase tracking-widest mb-1">
-                    Private Key{" "}
-                    <span className="text-red-400/80">*required</span>
-                  </div>
-                  <div className="relative">
-                    <input
-                      value={newPrivateKey}
-                      onChange={(e) => setNewPrivateKey(e.target.value)}
-                      type={showNewKey ? "text" : "password"}
-                      placeholder={
-                        newChain === "solana"
-                          ? "Base58 key (87-88 chars)"
-                          : "Hex key (64 chars, with or without 0x)"
-                      }
-                      autoComplete="new-password"
-                      name="mw-privkey-x9"
-                      className={`w-full h-7 px-2.5 pr-8 rounded bg-slate-950 text-cyan-100 text-[10px] font-mono placeholder:text-slate-700 focus:outline-none transition-colors border ${
-                        newPrivateKey &&
-                        !isValidPrivateKey(newPrivateKey, newChain)
-                          ? "border-red-500/50"
-                          : "border-slate-700/60 focus:border-cyan-500/50"
-                      }`}
-                    />
-                    <button
-                      onClick={() => setShowNewKey((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-slate-600 hover:text-slate-400 transition-colors"
-                    >
-                      {showNewKey ? (
-                        <EyeOff className="w-3 h-3" />
-                      ) : (
-                        <Eye className="w-3 h-3" />
-                      )}
-                    </button>
-                  </div>
-                  <div className="flex items-start gap-1 mt-1 px-0.5">
-                    <span className="text-amber-500 text-[9px] mt-px leading-none">
-                      ⚠
-                    </span>
-                    <p className="text-[7px] font-mono text-slate-700 leading-relaxed">
-                      Stored in localStorage. Use a dedicated farming wallet
-                      only — never your main wallet.
-                    </p>
-                  </div>
                 </div>
                 <div>
                   <div className="text-[7px] font-mono text-slate-600 uppercase tracking-widest mb-1">
@@ -1041,14 +937,63 @@ function MultiWalletPanel({
                     }))}
                   />
                 </div>
+                <div>
+                  <div className="text-[7px] font-mono text-slate-600 uppercase tracking-widest mb-1">
+                    Public Address
+                  </div>
+                  <input
+                    value={newAddress}
+                    onChange={(e) => setNewAddress(e.target.value)}
+                    placeholder={
+                      newChain === "solana" ? "7xKX… base58" : "0x… hex"
+                    }
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    name="mw-pub"
+                    className={`w-full h-7 px-2.5 rounded bg-slate-950 text-cyan-100 text-[10px] font-mono placeholder:text-slate-700 focus:outline-none transition-colors border ${newAddress && !isValidAddress(newAddress) ? "border-red-500/50" : "border-slate-700/60 focus:border-cyan-500/50"}`}
+                  />
+                </div>
+                <div>
+                  <div className="text-[7px] font-mono text-slate-600 uppercase tracking-widest mb-1">
+                    Private Key{" "}
+                    <span className="text-red-400/80">*required</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      value={newPrivateKey}
+                      onChange={(e) => setNewPrivateKey(e.target.value)}
+                      type={showNewKey ? "text" : "password"}
+                      placeholder={
+                        newChain === "solana"
+                          ? "Base58 (87–88 chars)"
+                          : "Hex 64 chars"
+                      }
+                      autoComplete="new-password"
+                      name="mw-pk"
+                      className={`w-full h-7 px-2.5 pr-8 rounded bg-slate-950 text-cyan-100 text-[10px] font-mono placeholder:text-slate-700 focus:outline-none transition-colors border ${newPrivateKey && !isValidPrivateKey(newPrivateKey, newChain) ? "border-red-500/50" : "border-slate-700/60 focus:border-cyan-500/50"}`}
+                    />
+                    <button
+                      onClick={() => setShowNewKey((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400 transition-colors"
+                    >
+                      {showNewKey ? (
+                        <EyeOff className="w-3 h-3" />
+                      ) : (
+                        <Eye className="w-3 h-3" />
+                      )}
+                    </button>
+                  </div>
+                </div>
                 <button
-                  onClick={addManualWallet}
+                  onClick={addWallet}
                   disabled={
                     !newAddress.trim() ||
                     !newPrivateKey.trim() ||
                     !isValidAddress(newAddress)
                   }
-                  className="w-full h-7 rounded text-[9px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed border mt-1"
+                  className="w-full h-7 rounded text-[9px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 disabled:opacity-30 border mt-1"
                   style={{
                     background: `${accent}12`,
                     borderColor: `${accent}35`,
@@ -1062,17 +1007,15 @@ function MultiWalletPanel({
           </div>
         )}
 
+        {/* Wallet list */}
         <div
           className="space-y-1.5"
-          style={{ maxHeight: "260px", overflowY: "auto", overflowX: "hidden" }}
+          style={{ maxHeight: 260, overflowY: "auto" }}
         >
           {wallets.length === 0 && !showAddForm && (
             <div className="py-5 text-center border border-dashed border-slate-700/30 rounded-xl">
               <div className="text-[10px] font-mono text-slate-600">
                 No wallets added
-              </div>
-              <div className="text-[8px] font-mono text-slate-700 mt-0.5">
-                Click "Add Wallet" above to get started
               </div>
             </div>
           )}
@@ -1089,14 +1032,13 @@ function MultiWalletPanel({
                 className="flex items-center gap-2 px-2.5 py-2"
                 style={{ background: "rgba(15,23,42,0.75)" }}
               >
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
                   <span className="text-[7px] font-mono text-slate-700">
                     #{i + 1}
                   </span>
                   <div
                     className="w-1.5 h-1.5 rounded-full"
                     style={{ background: chainColor(w.chain) }}
-                    title={w.chain}
                   />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1113,7 +1055,6 @@ function MultiWalletPanel({
                     <button
                       onClick={() => setEditingId(w.id)}
                       className="text-[10px] font-mono font-bold text-slate-200 truncate block w-full text-left hover:text-cyan-300 transition-colors"
-                      title="Click to rename"
                     >
                       {w.label}
                     </button>
@@ -1126,15 +1067,14 @@ function MultiWalletPanel({
                       · {w.chain}
                     </span>
                     {w.address && !isValidAddress(w.address) && (
-                      <AlertTriangle className="w-2.5 h-2.5 text-amber-400 flex-shrink-0" />
+                      <AlertTriangle className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
-                    onClick={() => copyAddress(w.id, w.address)}
-                    title="Copy full address"
-                    className="p-1 rounded cursor-pointer transition-colors hover:bg-slate-700/40"
+                    onClick={() => copyAddr(w.id, w.address)}
+                    className="p-1 rounded cursor-pointer hover:bg-slate-700/40 transition-colors"
                     style={{
                       color:
                         copiedId === w.id
@@ -1170,7 +1110,6 @@ function MultiWalletPanel({
                   <button
                     onClick={() => removeWallet(w.id)}
                     className="p-1 rounded cursor-pointer text-slate-600 hover:text-red-400 transition-colors"
-                    title="Remove wallet"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -1184,18 +1123,18 @@ function MultiWalletPanel({
                 }}
               >
                 <KeyRound
-                  className="w-3 h-3 flex-shrink-0"
+                  className="w-3 h-3 shrink-0"
                   style={{ color: w.privateKey ? "#34d399" : "#f87171" }}
                 />
                 <div className="flex-1 min-w-0">
                   {showKeyId === w.id ? (
                     <input
                       value={w.privateKey}
-                      onChange={(e) => updatePrivateKey(w.id, e.target.value)}
-                      placeholder="Paste private key here..."
+                      onChange={(e) => updatePK(w.id, e.target.value)}
+                      placeholder="Paste private key…"
                       autoFocus
                       autoComplete="off"
-                      name={`mw-pk-${w.id}`}
+                      name={`pk-${w.id}`}
                       onBlur={() => setShowKeyId(null)}
                       className="w-full bg-transparent text-[9px] font-mono focus:outline-none text-cyan-300"
                     />
@@ -1214,14 +1153,14 @@ function MultiWalletPanel({
                       >
                         {w.privateKey
                           ? maskKey(w.privateKey)
-                          : "No private key — click to add"}
+                          : "No key — click to add"}
                       </span>
                     </button>
                   )}
                 </div>
                 <button
                   onClick={() => setShowKeyId(showKeyId === w.id ? null : w.id)}
-                  className="cursor-pointer text-slate-600 hover:text-slate-400 transition-colors flex-shrink-0"
+                  className="cursor-pointer text-slate-600 hover:text-slate-400 transition-colors shrink-0"
                 >
                   {showKeyId === w.id ? (
                     <EyeOff className="w-3 h-3" />
@@ -1238,7 +1177,7 @@ function MultiWalletPanel({
   );
 }
 
-// ── Swap Panel ────────────────────────────────────────────────────────────────
+// ─── Swap sub-panel ───────────────────────────────────────────────────────────
 function SwapPanel({
   data,
   accent,
@@ -1257,16 +1196,13 @@ function SwapPanel({
   const toToken = str(data.toToken, "USDC").toUpperCase();
   const slippage = parseFloat(str(data.slippage, "0.5"));
   const dex = str(data.dex, "auto");
-
   const tokens = TOKENS_BY_CHAIN[chain] ?? TOKENS_BY_CHAIN.solana;
   const dexOptions = ["auto", ...(DEX_BY_CHAIN[chain] ?? [])];
-
-  const [fromDropdown, setFromDropdown] = useState(false);
-  const [toDropdown, setToDropdown] = useState(false);
+  const [fromDrop, setFromDrop] = useState(false);
+  const [toDrop, setToDrop] = useState(false);
 
   return (
     <div className="space-y-3">
-      {/* Chain */}
       <FieldGroup>
         <FieldLabel>Chain</FieldLabel>
         <div className="grid grid-cols-3 gap-1">
@@ -1274,20 +1210,13 @@ function SwapPanel({
             <button
               key={c}
               onClick={() => {
-                const newTokens = TOKENS_BY_CHAIN[c] ?? [];
-                const newFrom = newTokens.includes(fromToken)
-                  ? fromToken
-                  : newTokens[0];
-                const newTo =
-                  newTokens.includes(toToken) && toToken !== newFrom
-                    ? toToken
-                    : (newTokens.find((t) => t !== newFrom) ??
-                      newTokens[1] ??
-                      newTokens[0]);
+                const nt = TOKENS_BY_CHAIN[c] ?? [];
+                const nf = nt.includes(fromToken) ? fromToken : nt[0];
+                const to = nt.find((t) => t !== nf) ?? nt[1] ?? nt[0];
                 updateNodeData(nodeId, {
                   chain: c,
-                  fromToken: newFrom,
-                  toToken: newTo,
+                  fromToken: nf,
+                  toToken: to,
                 });
               }}
               className="py-1.5 rounded-lg text-[8px] font-mono font-bold capitalize tracking-wider cursor-pointer transition-all"
@@ -1317,27 +1246,25 @@ function SwapPanel({
         </div>
       </FieldGroup>
 
-      {/* Token pair */}
       <div className="grid grid-cols-[1fr,auto,1fr] gap-1.5 items-end">
-        {/* From token */}
         <FieldGroup>
           <FieldLabel>From</FieldLabel>
           <div className="relative">
             <button
               onClick={() => {
-                setFromDropdown((v) => !v);
-                setToDropdown(false);
+                setFromDrop((v) => !v);
+                setToDrop(false);
               }}
               className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer"
               style={{
                 background: "rgba(2,6,23,0.9)",
-                border: `1px solid ${fromDropdown ? accent + "55" : "rgba(51,65,85,0.8)"}`,
+                border: `1px solid ${fromDrop ? accent + "55" : "rgba(51,65,85,0.8)"}`,
               }}
             >
               <TokenBadge token={fromToken} />
               <ChevronDown className="w-3 h-3 text-slate-500" />
             </button>
-            {fromDropdown && (
+            {fromDrop && (
               <div
                 className="absolute top-[calc(100%+4px)] left-0 right-0 rounded-lg overflow-hidden z-10"
                 style={{
@@ -1352,7 +1279,7 @@ function SwapPanel({
                       key={t}
                       onClick={() => {
                         updateField("fromToken", t);
-                        setFromDropdown(false);
+                        setFromDrop(false);
                       }}
                       className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-white/5 cursor-pointer"
                     >
@@ -1363,8 +1290,6 @@ function SwapPanel({
             )}
           </div>
         </FieldGroup>
-
-        {/* Flip button */}
         <button
           onClick={() => {
             updateField("fromToken", toToken);
@@ -1376,30 +1301,27 @@ function SwapPanel({
             border: `1px solid ${accent}22`,
             color: accent,
           }}
-          title="Flip tokens"
         >
           <ArrowLeftRight className="w-3 h-3" />
         </button>
-
-        {/* To token */}
         <FieldGroup>
           <FieldLabel>To</FieldLabel>
           <div className="relative">
             <button
               onClick={() => {
-                setToDropdown((v) => !v);
-                setFromDropdown(false);
+                setToDrop((v) => !v);
+                setFromDrop(false);
               }}
               className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer"
               style={{
                 background: "rgba(2,6,23,0.9)",
-                border: `1px solid ${toDropdown ? accent + "55" : "rgba(51,65,85,0.8)"}`,
+                border: `1px solid ${toDrop ? accent + "55" : "rgba(51,65,85,0.8)"}`,
               }}
             >
               <TokenBadge token={toToken} />
               <ChevronDown className="w-3 h-3 text-slate-500" />
             </button>
-            {toDropdown && (
+            {toDrop && (
               <div
                 className="absolute top-[calc(100%+4px)] left-0 right-0 rounded-lg overflow-hidden z-10"
                 style={{
@@ -1414,7 +1336,7 @@ function SwapPanel({
                       key={t}
                       onClick={() => {
                         updateField("toToken", t);
-                        setToDropdown(false);
+                        setToDrop(false);
                       }}
                       className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-white/5 cursor-pointer"
                     >
@@ -1427,7 +1349,6 @@ function SwapPanel({
         </FieldGroup>
       </div>
 
-      {/* Amount */}
       <FieldGroup>
         <FieldLabel>Amount ({fromToken})</FieldLabel>
         <input
@@ -1449,9 +1370,8 @@ function SwapPanel({
         />
       </FieldGroup>
 
-      {/* Slippage */}
       <FieldGroup>
-        <FieldLabel>Slippage Tolerance</FieldLabel>
+        <FieldLabel>Slippage</FieldLabel>
         <div className="grid grid-cols-4 gap-1">
           {SLIPPAGE_PRESETS.map((s) => (
             <button
@@ -1478,7 +1398,6 @@ function SwapPanel({
         </div>
       </FieldGroup>
 
-      {/* DEX */}
       <FieldGroup>
         <FieldLabel>DEX / Aggregator</FieldLabel>
         <div className="space-y-1">
@@ -1509,24 +1428,11 @@ function SwapPanel({
           ))}
         </div>
       </FieldGroup>
-
-      <div
-        className="rounded-lg px-3 py-2"
-        style={{
-          background: `${accent}06`,
-          border: `1px solid ${accent}15`,
-        }}
-      >
-        <p className="text-[8px] font-mono text-slate-500 leading-relaxed">
-          // Live quote fetched every 15s · configure on node for real-time
-          preview
-        </p>
-      </div>
     </div>
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 export function NodePropertiesPanel() {
   const selectedNode = useFlowStore((s) =>
     s.selectedNodeId
@@ -1538,13 +1444,21 @@ export function NodePropertiesPanel() {
   const deleteNode = useFlowStore((s) => s.deleteNode);
   const { isConnected: tgConnected, openBot } = useTelegram();
 
+  // ── Responsive ──────────────────────────────────────────────────────────────
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   if (!selectedNode) return null;
 
-  const defaultAccent = NODE_COLORS[selectedNode.type ?? ""] ?? "#22d3ee";
   const accent =
     typeof selectedNode.data.customColor === "string"
       ? selectedNode.data.customColor
-      : defaultAccent;
+      : (NODE_COLORS[selectedNode.type ?? ""] ?? "#22d3ee");
   const nodeLabel =
     NODE_LABELS[selectedNode.type ?? ""] ?? selectedNode.type?.toUpperCase();
 
@@ -1556,18 +1470,19 @@ export function NodePropertiesPanel() {
   const updateField = (field: string, value: unknown) =>
     updateNodeData(selectedNode.id, { [field]: value });
 
+  // ─── Field renderers ───────────────────────────────────────────────────────
   const renderFields = () => {
     switch (selectedNode.type) {
       case "trigger": {
-        const triggerType = str(selectedNode.data.triggerType, "schedule");
-        const schedulePreset = str(selectedNode.data.schedulePreset, "Daily");
+        const tt = str(selectedNode.data.triggerType, "schedule");
+        const sp = str(selectedNode.data.schedulePreset, "Daily");
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Trigger Type</FieldLabel>
+              <FieldLabel>Type</FieldLabel>
               <StyledSelect
                 accent={accent}
-                value={triggerType}
+                value={tt}
                 onChange={(v) => updateField("triggerType", v)}
                 options={[
                   { value: "schedule", label: "Schedule" },
@@ -1577,13 +1492,13 @@ export function NodePropertiesPanel() {
                 ]}
               />
             </FieldGroup>
-            {triggerType === "schedule" && (
+            {tt === "schedule" && (
               <>
                 <FieldGroup>
                   <FieldLabel>Frequency</FieldLabel>
                   <StyledSelect
                     accent={accent}
-                    value={schedulePreset}
+                    value={sp}
                     onChange={(v) => updateField("schedulePreset", v)}
                     options={[
                       { value: "Hourly", label: "Hourly" },
@@ -1594,8 +1509,7 @@ export function NodePropertiesPanel() {
                     ]}
                   />
                 </FieldGroup>
-                {(schedulePreset === "Daily" ||
-                  schedulePreset === "Weekly") && (
+                {(sp === "Daily" || sp === "Weekly") && (
                   <FieldGroup>
                     <FieldLabel>Time (UTC)</FieldLabel>
                     <TimePickerInput
@@ -1605,7 +1519,7 @@ export function NodePropertiesPanel() {
                     />
                   </FieldGroup>
                 )}
-                {schedulePreset === "Custom" && (
+                {sp === "Custom" && (
                   <FieldGroup>
                     <FieldLabel>Cron Expression</FieldLabel>
                     <StyledInput
@@ -1619,12 +1533,12 @@ export function NodePropertiesPanel() {
                 )}
               </>
             )}
-            {triggerType === "price" && (
+            {tt === "price" && (
               <>
                 <FieldGroup>
                   <FieldLabel>Token</FieldLabel>
                   <StyledInput
-                    placeholder="SOL, ETH, BTC..."
+                    placeholder="SOL, ETH…"
                     value={str(selectedNode.data.token, "SOL")}
                     onChange={(e) =>
                       updateField("token", e.target.value.toUpperCase())
@@ -1656,10 +1570,10 @@ export function NodePropertiesPanel() {
                 </FieldGroup>
               </>
             )}
-            {triggerType === "wallet" && (
+            {tt === "wallet" && (
               <>
                 <FieldGroup>
-                  <FieldLabel>Event Type</FieldLabel>
+                  <FieldLabel>Event</FieldLabel>
                   <StyledSelect
                     accent={accent}
                     value={str(selectedNode.data.walletEvent, "Incoming TX")}
@@ -1673,7 +1587,7 @@ export function NodePropertiesPanel() {
                   />
                 </FieldGroup>
                 <FieldGroup>
-                  <FieldLabel>Min Amount (optional)</FieldLabel>
+                  <FieldLabel>Min Amount</FieldLabel>
                   <StyledInput
                     type="number"
                     placeholder="0.00"
@@ -1682,11 +1596,6 @@ export function NodePropertiesPanel() {
                   />
                 </FieldGroup>
               </>
-            )}
-            {triggerType === "manual" && (
-              <p className="text-[10px] font-mono text-slate-500 leading-relaxed py-1">
-                // fires when flow is manually executed from the toolbar
-              </p>
             )}
           </>
         );
@@ -1715,46 +1624,39 @@ export function NodePropertiesPanel() {
         );
 
       case "bridge": {
-        const bridgeProtocol = str(selectedNode.data.bridgeProtocol, "Across");
-        const bridgeChains =
-          BRIDGE_PROTOCOL_CHAINS[bridgeProtocol] ??
-          BRIDGE_PROTOCOL_CHAINS.Across;
-        const currentFrom = bridgeChains.find(
+        const bp = str(selectedNode.data.bridgeProtocol, "Across");
+        const chains =
+          BRIDGE_PROTOCOL_CHAINS[bp] ?? BRIDGE_PROTOCOL_CHAINS.Across;
+        const from = chains.find(
           (c) => c.value === str(selectedNode.data.fromChain),
         )
           ? str(selectedNode.data.fromChain)
-          : bridgeChains[0].value;
-        const toChainOptions = bridgeChains.filter(
-          (c) => c.value !== currentFrom,
-        );
-        const currentTo = toChainOptions.find(
+          : chains[0].value;
+        const toOpts = chains.filter((c) => c.value !== from);
+        const to = toOpts.find(
           (c) => c.value === str(selectedNode.data.toChain),
         )
           ? str(selectedNode.data.toChain)
-          : (toChainOptions[0]?.value ?? "");
+          : (toOpts[0]?.value ?? "");
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Bridge Protocol</FieldLabel>
+              <FieldLabel>Protocol</FieldLabel>
               <StyledSelect
                 accent={accent}
-                value={bridgeProtocol}
+                value={bp}
                 onChange={(v) => {
-                  const newChains =
+                  const nc =
                     BRIDGE_PROTOCOL_CHAINS[v] ?? BRIDGE_PROTOCOL_CHAINS.Across;
-                  const newFrom = newChains.find((c) => c.value === currentFrom)
-                    ? currentFrom
-                    : newChains[0].value;
-                  const newTo = newChains.find(
-                    (c) => c.value === currentTo && c.value !== newFrom,
-                  )
-                    ? currentTo
-                    : (newChains.find((c) => c.value !== newFrom)?.value ??
-                      newChains[0].value);
+                  const nf = nc.find((c) => c.value === from)
+                    ? from
+                    : nc[0].value;
+                  const nt =
+                    nc.find((c) => c.value !== nf)?.value ?? nc[0].value;
                   updateNodeData(selectedNode.id, {
                     bridgeProtocol: v,
-                    fromChain: newFrom,
-                    toChain: newTo,
+                    fromChain: nf,
+                    toChain: nt,
                   });
                 }}
                 options={[
@@ -1764,34 +1666,42 @@ export function NodePropertiesPanel() {
                 ]}
               />
             </FieldGroup>
-            <FieldGroup>
-              <FieldLabel>From Chain</FieldLabel>
-              <StyledSelect
-                accent={accent}
-                value={currentFrom}
-                onChange={(v) => {
-                  const newTo =
-                    currentTo === v
-                      ? (bridgeChains.find((c) => c.value !== v)?.value ??
-                        bridgeChains[0].value)
-                      : currentTo;
-                  updateNodeData(selectedNode.id, {
-                    fromChain: v,
-                    toChain: newTo,
-                  });
-                }}
-                options={bridgeChains}
-              />
-            </FieldGroup>
-            <FieldGroup>
-              <FieldLabel>To Chain</FieldLabel>
-              <StyledSelect
-                accent={accent}
-                value={currentTo}
-                onChange={(v) => updateField("toChain", v)}
-                options={toChainOptions}
-              />
-            </FieldGroup>
+            <div className="grid grid-cols-[1fr,auto,1fr] gap-1.5 items-end">
+              <FieldGroup>
+                <FieldLabel>From</FieldLabel>
+                <StyledSelect
+                  accent={accent}
+                  value={from}
+                  onChange={(v) => {
+                    const nt =
+                      to === v
+                        ? (chains.find((c) => c.value !== v)?.value ??
+                          chains[0].value)
+                        : to;
+                    updateNodeData(selectedNode.id, {
+                      fromChain: v,
+                      toChain: nt,
+                    });
+                  }}
+                  options={chains}
+                />
+              </FieldGroup>
+              <div className="mb-0.5 flex items-end justify-center pb-1">
+                <ArrowLeftRight
+                  className="w-3 h-3"
+                  style={{ color: `${accent}60` }}
+                />
+              </div>
+              <FieldGroup>
+                <FieldLabel>To</FieldLabel>
+                <StyledSelect
+                  accent={accent}
+                  value={to}
+                  onChange={(v) => updateField("toChain", v)}
+                  options={toOpts}
+                />
+              </FieldGroup>
+            </div>
             <FieldGroup>
               <FieldLabel>Amount (USD)</FieldLabel>
               <StyledInput
@@ -1809,7 +1719,7 @@ export function NodePropertiesPanel() {
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Current Chain</FieldLabel>
+              <FieldLabel>From</FieldLabel>
               <StyledSelect
                 accent={accent}
                 value={str(selectedNode.data.currentChain, "Ethereum")}
@@ -1818,7 +1728,7 @@ export function NodePropertiesPanel() {
               />
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel>Target Chain</FieldLabel>
+              <FieldLabel>To</FieldLabel>
               <StyledSelect
                 accent={accent}
                 value={str(selectedNode.data.targetChain, "Arbitrum")}
@@ -1833,7 +1743,7 @@ export function NodePropertiesPanel() {
         );
 
       case "alert": {
-        const alertType = str(selectedNode.data.alertType, "Telegram");
+        const at = str(selectedNode.data.alertType, "Telegram");
         return (
           <>
             <FieldGroup>
@@ -1874,7 +1784,7 @@ export function NodePropertiesPanel() {
               <FieldLabel>Channel</FieldLabel>
               <StyledSelect
                 accent={accent}
-                value={alertType}
+                value={at}
                 onChange={(v) => updateField("alertType", v)}
                 options={[
                   { value: "Telegram", label: "Telegram" },
@@ -1884,7 +1794,7 @@ export function NodePropertiesPanel() {
                 ]}
               />
             </FieldGroup>
-            {alertType === "Telegram" && (
+            {at === "Telegram" && (
               <div
                 className="rounded-lg p-3 space-y-2"
                 style={{
@@ -1904,7 +1814,7 @@ export function NodePropertiesPanel() {
                     <span
                       className={`text-[10px] font-mono font-bold ${tgConnected ? "text-green-400" : "text-cyan-400"}`}
                     >
-                      {tgConnected ? "Bot connected" : "Bot not connected"}
+                      {tgConnected ? "Bot connected" : "Not connected"}
                     </span>
                   </div>
                   {!tgConnected && (
@@ -1916,27 +1826,22 @@ export function NodePropertiesPanel() {
                     </button>
                   )}
                 </div>
-                <p className="text-[9px] font-mono text-slate-500 leading-relaxed">
-                  {tgConnected
-                    ? "Alerts will be sent to your Telegram private chat."
-                    : "Click Connect — the bot opens with your token. Hit Start in Telegram and this will update automatically."}
-                </p>
               </div>
             )}
-            {(alertType === "Discord" || alertType === "Webhook") && (
+            {(at === "Discord" || at === "Webhook") && (
               <FieldGroup>
                 <FieldLabel>Webhook URL</FieldLabel>
                 <StyledInput
-                  placeholder="https://discord.com/api/webhooks/..."
+                  placeholder="https://..."
                   value={str(selectedNode.data.webhookUrl)}
                   onChange={(e) => updateField("webhookUrl", e.target.value)}
                 />
               </FieldGroup>
             )}
-            {alertType === "Email" && (
+            {at === "Email" && (
               <>
                 <FieldGroup>
-                  <FieldLabel>To Address</FieldLabel>
+                  <FieldLabel>To</FieldLabel>
                   <StyledInput
                     placeholder="you@example.com"
                     value={str(selectedNode.data.emailTo)}
@@ -1959,21 +1864,9 @@ export function NodePropertiesPanel() {
               <FieldLabel>Message</FieldLabel>
               <StyledTextarea
                 rows={3}
-                placeholder="Flow completed successfully!"
+                placeholder="Flow completed!"
                 value={str(selectedNode.data.message)}
                 onChange={(e) => updateField("message", e.target.value)}
-              />
-            </FieldGroup>
-            <FieldGroup>
-              <FieldLabel>Cooldown (seconds)</FieldLabel>
-              <StyledInput
-                type="number"
-                min={0}
-                placeholder="0 = no cooldown"
-                value={str(selectedNode.data.cooldown, "0")}
-                onChange={(e) =>
-                  updateField("cooldown", Number(e.target.value))
-                }
               />
             </FieldGroup>
           </>
@@ -1981,14 +1874,14 @@ export function NodePropertiesPanel() {
       }
 
       case "condition": {
-        const conditionType = str(selectedNode.data.conditionType, "price");
+        const ct = str(selectedNode.data.conditionType, "price");
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Condition Type</FieldLabel>
+              <FieldLabel>Type</FieldLabel>
               <StyledSelect
                 accent={accent}
-                value={conditionType}
+                value={ct}
                 onChange={(v) => updateField("conditionType", v)}
                 options={[
                   { value: "price", label: "Price" },
@@ -1998,7 +1891,7 @@ export function NodePropertiesPanel() {
                 ]}
               />
             </FieldGroup>
-            {conditionType === "price" && (
+            {ct === "price" && (
               <FieldGroup>
                 <FieldLabel>Token</FieldLabel>
                 <StyledInput
@@ -2015,11 +1908,11 @@ export function NodePropertiesPanel() {
                 value={str(selectedNode.data.operator, ">")}
                 onChange={(v) => updateField("operator", v)}
                 options={[
-                  { value: ">", label: "Greater than ( > )" },
-                  { value: "<", label: "Less than ( < )" },
-                  { value: "=", label: "Equal to ( = )" },
-                  { value: ">=", label: "Greater or equal ( >= )" },
-                  { value: "<=", label: "Less or equal ( <= )" },
+                  { value: ">", label: ">" },
+                  { value: "<", label: "<" },
+                  { value: "=", label: "=" },
+                  { value: ">=", label: ">=" },
+                  { value: "<=", label: "<=" },
                 ]}
               />
             </FieldGroup>
@@ -2031,7 +1924,7 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("value", e.target.value)}
               />
             </FieldGroup>
-            {conditionType === "custom" && (
+            {ct === "custom" && (
               <FieldGroup>
                 <FieldLabel>Expression</FieldLabel>
                 <StyledInput
@@ -2046,26 +1939,16 @@ export function NodePropertiesPanel() {
       }
 
       case "walletConnect": {
-        const wAddress = str(selectedNode.data.address);
-        const wNetwork = str(selectedNode.data.network);
-        const wBalance = str(selectedNode.data.balance);
-        const isConnected = !!wAddress;
-        const walletTypeVal = str(selectedNode.data.walletType, "phantom");
-        const isSolana = ["phantom", "backpack", "solflare"].includes(
-          walletTypeVal,
-        );
-        const shortWAddr =
-          wAddress.length > 10
-            ? `${wAddress.slice(0, 6)}…${wAddress.slice(-4)}`
-            : wAddress;
-
+        const wt = str(selectedNode.data.walletType, "phantom");
+        const addr = str(selectedNode.data.address);
+        const connected = !!addr;
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Wallet Type</FieldLabel>
+              <FieldLabel>Provider</FieldLabel>
               <StyledSelect
                 accent={accent}
-                value={walletTypeVal}
+                value={wt}
                 onChange={(v) => updateField("walletType", v)}
                 options={[
                   { value: "phantom", label: "Phantom (Solana)" },
@@ -2073,7 +1956,7 @@ export function NodePropertiesPanel() {
                   { value: "solflare", label: "Solflare (Solana)" },
                   { value: "metamask", label: "MetaMask (EVM)" },
                   { value: "rabby", label: "Rabby (EVM)" },
-                  { value: "coinbase", label: "Coinbase Wallet (EVM)" },
+                  { value: "coinbase", label: "Coinbase (EVM)" },
                 ]}
               />
             </FieldGroup>
@@ -2083,72 +1966,45 @@ export function NodePropertiesPanel() {
                 className="h-8 flex items-center gap-2 px-3 rounded-md text-xs font-mono"
                 style={{
                   background: "rgba(2,6,23,0.9)",
-                  border: isConnected
+                  border: connected
                     ? "1px solid rgba(52,211,153,0.3)"
                     : "1px solid rgba(51,65,85,0.8)",
                 }}
               >
                 <div
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ background: isConnected ? "#34d399" : "#475569" }}
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ background: connected ? "#34d399" : "#475569" }}
                 />
-                <span
-                  className="flex-1"
-                  style={{ color: isConnected ? "#34d399" : "#475569" }}
-                >
-                  {isConnected ? "Connected" : "Not connected — use the node"}
+                <span style={{ color: connected ? "#34d399" : "#475569" }}>
+                  {connected ? shortAddr(addr) : "Not connected"}
                 </span>
-                {wNetwork && (
+                {str(selectedNode.data.network) && (
                   <span
-                    className="text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0"
+                    className="text-[9px] font-mono px-1.5 py-0.5 rounded ml-auto"
                     style={{
                       background: `${accent}18`,
                       border: `1px solid ${accent}33`,
                       color: accent,
                     }}
                   >
-                    {wNetwork}
+                    {str(selectedNode.data.network)}
                   </span>
                 )}
               </div>
             </FieldGroup>
-            {isConnected ? (
+            {!connected && (
               <FieldGroup>
-                <FieldLabel>Connected Address</FieldLabel>
-                <div
-                  className="h-8 flex items-center justify-between px-3 rounded-md"
-                  style={{
-                    background: "rgba(2,6,23,0.9)",
-                    border: "1px solid rgba(51,65,85,0.8)",
-                  }}
-                >
-                  <span className="text-xs font-mono text-cyan-100 truncate">
-                    {shortWAddr}
-                  </span>
-                  {wBalance && (
-                    <span
-                      className="text-[9px] font-mono flex-shrink-0 ml-2"
-                      style={{ color: accent }}
-                    >
-                      {wBalance}
-                    </span>
-                  )}
-                </div>
-              </FieldGroup>
-            ) : (
-              <FieldGroup>
-                <FieldLabel>Address (manual override)</FieldLabel>
+                <FieldLabel>Address Override</FieldLabel>
                 <StyledInput
                   placeholder={
-                    isSolana ? "7xKX… (Solana base58)" : "0x1234… (EVM hex)"
+                    ["phantom", "backpack", "solflare"].includes(wt)
+                      ? "7xKX… base58"
+                      : "0x… hex"
                   }
-                  value={wAddress}
+                  value={addr}
                   onChange={(e) => updateField("address", e.target.value)}
                   className="font-mono"
                 />
-                <div className="text-[8px] font-mono text-slate-600 mt-0.5">
-                  // Use the Connect button on the node to auto-fill
-                </div>
               </FieldGroup>
             )}
           </>
@@ -2220,14 +2076,14 @@ export function NodePropertiesPanel() {
         );
 
       case "twitter": {
-        const taskType = str(selectedNode.data.taskType, "follow");
+        const tt = str(selectedNode.data.taskType, "follow");
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Task Type</FieldLabel>
+              <FieldLabel>Task</FieldLabel>
               <StyledSelect
                 accent={accent}
-                value={taskType}
+                value={tt}
                 onChange={(v) => updateField("taskType", v)}
                 options={[
                   { value: "follow", label: "Follow" },
@@ -2246,7 +2102,7 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("target", e.target.value)}
               />
             </FieldGroup>
-            {(taskType === "quote" || taskType === "tweet") && (
+            {(tt === "quote" || tt === "tweet") && (
               <FieldGroup>
                 <FieldLabel>Tweet Text</FieldLabel>
                 <StyledTextarea
@@ -2262,78 +2118,57 @@ export function NodePropertiesPanel() {
       }
 
       case "discord": {
-        const taskType = str(selectedNode.data.taskType, "join");
+        const tt = str(selectedNode.data.taskType, "join");
         const hasToken = str(selectedNode.data.discordToken).length > 10;
-        const needsServer = taskType === "join";
-        const needsChannel =
-          taskType === "message" || taskType === "react" || taskType === "role";
-        const needsMessage = taskType === "message";
-        const needsMessageId = taskType === "react" || taskType === "role";
-        const needsEmoji = taskType === "react" || taskType === "role";
-
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Discord Token</FieldLabel>
-              <div className="relative">
-                <StyledInput
-                  type="password"
-                  placeholder="Your Discord user token"
-                  value={str(selectedNode.data.discordToken)}
-                  onChange={(e) => updateField("discordToken", e.target.value)}
-                  className="font-mono pr-8"
-                  autoComplete="off"
-                />
-              </div>
-              <div
-                className="rounded px-2 py-1.5 mt-1"
-                style={{
-                  background: "rgba(239,68,68,0.05)",
-                  border: "1px solid rgba(239,68,68,0.15)",
-                }}
-              >
-                <p className="text-[7px] font-mono text-red-400/60 leading-relaxed">
-                  ⚠ Use a dedicated farming account only. Selfbotting violates
-                  Discord ToS. Never use your main account.
-                </p>
-              </div>
+              <FieldLabel>Token</FieldLabel>
+              <StyledInput
+                type="password"
+                placeholder="Discord user token"
+                value={str(selectedNode.data.discordToken)}
+                onChange={(e) => updateField("discordToken", e.target.value)}
+                className="font-mono"
+                autoComplete="off"
+              />
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel>Task Type</FieldLabel>
+              <FieldLabel>Task</FieldLabel>
               <StyledSelect
                 accent={accent}
-                value={taskType}
+                value={tt}
                 onChange={(v) => updateField("taskType", v)}
                 options={[
                   { value: "join", label: "Join Server" },
                   { value: "message", label: "Send Message" },
-                  { value: "react", label: "React to Message" },
-                  { value: "role", label: "Get Role (reaction)" },
+                  { value: "react", label: "React" },
+                  { value: "role", label: "Get Role" },
                 ]}
               />
             </FieldGroup>
-            {needsServer && (
+            {tt === "join" && (
               <FieldGroup>
                 <FieldLabel>Server Invite</FieldLabel>
                 <StyledInput
-                  placeholder="discord.gg/abc123 or https://discord.gg/abc"
+                  placeholder="discord.gg/abc123"
                   value={str(selectedNode.data.serverId)}
                   onChange={(e) => updateField("serverId", e.target.value)}
                 />
               </FieldGroup>
             )}
-            {needsChannel && (
+            {(tt === "message" || tt === "react" || tt === "role") && (
               <FieldGroup>
                 <FieldLabel>Channel ID</FieldLabel>
                 <StyledInput
-                  placeholder="1234567890123456789"
+                  placeholder="123456789"
                   value={str(selectedNode.data.channelId)}
                   onChange={(e) => updateField("channelId", e.target.value)}
                   className="font-mono"
                 />
               </FieldGroup>
             )}
-            {needsMessage && (
+            {tt === "message" && (
               <FieldGroup>
                 <FieldLabel>Message</FieldLabel>
                 <StyledTextarea
@@ -2344,33 +2179,41 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
-            {needsMessageId && (
-              <FieldGroup>
-                <FieldLabel>Message ID</FieldLabel>
-                <StyledInput
-                  placeholder="1234567890123456789"
-                  value={str(selectedNode.data.messageId)}
-                  onChange={(e) => updateField("messageId", e.target.value)}
-                  className="font-mono"
-                />
-                <div className="text-[8px] font-mono text-slate-600 mt-0.5">
-                  // Right-click message → Copy Message ID (developer mode
-                  required)
-                </div>
-              </FieldGroup>
+            {(tt === "react" || tt === "role") && (
+              <>
+                <FieldGroup>
+                  <FieldLabel>Message ID</FieldLabel>
+                  <StyledInput
+                    placeholder="123456789"
+                    value={str(selectedNode.data.messageId)}
+                    onChange={(e) => updateField("messageId", e.target.value)}
+                    className="font-mono"
+                  />
+                </FieldGroup>
+                <FieldGroup>
+                  <FieldLabel>Emoji</FieldLabel>
+                  <StyledInput
+                    placeholder="👍"
+                    value={str(selectedNode.data.emoji, "👍")}
+                    onChange={(e) => updateField("emoji", e.target.value)}
+                  />
+                </FieldGroup>
+              </>
             )}
-            {needsEmoji && (
+            {/* FIX: Role ID field for role task — needed to verify role assignment */}
+            {tt === "role" && (
               <FieldGroup>
-                <FieldLabel>Emoji</FieldLabel>
+                <FieldLabel>Role ID</FieldLabel>
                 <StyledInput
-                  placeholder="👍  or  customname:123456789"
-                  value={str(selectedNode.data.emoji, "👍")}
-                  onChange={(e) => updateField("emoji", e.target.value)}
+                  placeholder="Role ID (optional)"
+                  value={str(selectedNode.data.roleId)}
+                  onChange={(e) => updateField("roleId", e.target.value)}
+                  className="font-mono"
                 />
               </FieldGroup>
             )}
             <div
-              className="rounded-lg px-3 py-2 flex items-center justify-between"
+              className="h-7 flex items-center gap-2 px-3 rounded-md"
               style={{
                 background: "rgba(2,6,23,0.9)",
                 border: hasToken
@@ -2378,18 +2221,16 @@ export function NodePropertiesPanel() {
                   : "1px solid rgba(51,65,85,0.4)",
               }}
             >
-              <div className="flex items-center gap-1.5">
-                <div
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ background: hasToken ? "#34d399" : "#475569" }}
-                />
-                <span
-                  className="text-[9px] font-mono"
-                  style={{ color: hasToken ? "#34d399" : "#475569" }}
-                >
-                  {hasToken ? "Token set — ready to execute" : "Token required"}
-                </span>
-              </div>
+              <div
+                className="w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ background: hasToken ? "#34d399" : "#475569" }}
+              />
+              <span
+                className="text-[9px] font-mono"
+                style={{ color: hasToken ? "#34d399" : "#475569" }}
+              >
+                {hasToken ? "Token set" : "Token required"}
+              </span>
             </div>
           </>
         );
@@ -2397,39 +2238,33 @@ export function NodePropertiesPanel() {
 
       case "galxe": {
         const hasToken = str(selectedNode.data.galxeToken ?? "").length > 10;
-        const hasWallet =
-          str(selectedNode.data.walletPublicKey ?? "").length > 10;
+        const injectedWallet = str(selectedNode.data.walletPublicKey ?? "");
+        const hasWallet = injectedWallet.length > 10;
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Galxe Access Token</FieldLabel>
-              <div className="relative">
-                <StyledInput
-                  type="password"
-                  placeholder="Your Galxe access token"
-                  value={str(selectedNode.data.galxeToken)}
-                  onChange={(e) => updateField("galxeToken", e.target.value)}
-                  className="font-mono pr-8"
-                  autoComplete="off"
-                />
-              </div>
-              <div
-                className="rounded px-2 py-1.5 mt-1"
-                style={{
-                  background: "rgba(167,139,250,0.05)",
-                  border: "1px solid rgba(167,139,250,0.15)",
-                }}
-              >
-                <p className="text-[7px] font-mono text-violet-400/60 leading-relaxed">
-                  Get your token: galxe.com → Settings → Access Token. Required
-                  for all actions.
-                </p>
-              </div>
+              <FieldLabel>Access Token</FieldLabel>
+              <StyledInput
+                type="password"
+                placeholder="Galxe access token"
+                value={str(selectedNode.data.galxeToken)}
+                onChange={(e) => updateField("galxeToken", e.target.value)}
+                className="font-mono"
+                autoComplete="off"
+              />
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel>Wallet Address</FieldLabel>
+              <FieldLabel>Campaign Name</FieldLabel>
+              <StyledInput
+                placeholder="e.g. Arbitrum Odyssey"
+                value={str(selectedNode.data.campaignName)}
+                onChange={(e) => updateField("campaignName", e.target.value)}
+              />
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Wallet</FieldLabel>
               <div
-                className="h-8 flex items-center justify-between px-3 rounded-md"
+                className="h-8 flex items-center px-3 rounded-md"
                 style={{
                   background: "rgba(2,6,23,0.9)",
                   border: hasWallet
@@ -2437,39 +2272,45 @@ export function NodePropertiesPanel() {
                     : "1px solid rgba(248,113,113,0.25)",
                 }}
               >
-                {hasWallet ? (
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                    <span className="text-[10px] font-mono text-emerald-400">
-                      {str(selectedNode.data.walletPublicKey).slice(0, 6)}…
-                      {str(selectedNode.data.walletPublicKey).slice(-4)}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-[10px] font-mono text-red-400/70">
-                    Connect via WalletConnect node upstream
-                  </span>
-                )}
+                <div
+                  className="w-1.5 h-1.5 rounded-full mr-2 shrink-0"
+                  style={{ background: hasWallet ? "#34d399" : "#f87171" }}
+                />
+                <span
+                  className="text-[10px] font-mono"
+                  style={{
+                    color: hasWallet ? "#34d399" : "rgba(248,113,113,0.7)",
+                  }}
+                >
+                  {hasWallet
+                    ? shortAddr(injectedWallet)
+                    : "Connect via WalletConnect node"}
+                </span>
               </div>
             </FieldGroup>
-            <FieldGroup>
-              <FieldLabel>Campaign Name</FieldLabel>
-              <StyledInput
-                placeholder="Project XYZ Campaign"
-                value={str(selectedNode.data.campaignName)}
-                onChange={(e) => updateField("campaignName", e.target.value)}
-              />
-            </FieldGroup>
+            {/* FIX: Manual wallet fallback when no upstream node injects walletPublicKey */}
+            {!hasWallet && (
+              <FieldGroup>
+                <FieldLabel>Wallet Address (manual fallback)</FieldLabel>
+                <StyledInput
+                  placeholder="Solana pubkey or 0x EVM address"
+                  value={str(selectedNode.data.manualWalletAddress)}
+                  onChange={(e) => {
+                    updateField("manualWalletAddress", e.target.value);
+                    // also write to walletPublicKey so the node picks it up
+                    updateField("walletPublicKey", e.target.value || undefined);
+                  }}
+                  className="font-mono"
+                />
+              </FieldGroup>
+            )}
             <FieldGroup>
               <FieldLabel>Campaign URL</FieldLabel>
               <StyledInput
-                placeholder="https://galxe.com/Project/campaign/AliasXYZ"
+                placeholder="https://galxe.com/Project/campaign/…"
                 value={str(selectedNode.data.campaignUrl)}
                 onChange={(e) => updateField("campaignUrl", e.target.value)}
               />
-              <div className="text-[8px] font-mono text-slate-600 mt-0.5">
-                // Full campaign URL — alias is parsed automatically
-              </div>
             </FieldGroup>
             <FieldGroup>
               <FieldLabel>Action</FieldLabel>
@@ -2485,98 +2326,98 @@ export function NodePropertiesPanel() {
               />
             </FieldGroup>
             <div
-              className="rounded-lg px-3 py-2 flex items-center justify-between"
+              className="h-7 flex items-center gap-2 px-3 rounded-md"
               style={{
                 background: "rgba(2,6,23,0.9)",
-                border: hasToken
-                  ? "1px solid rgba(52,211,153,0.2)"
-                  : "1px solid rgba(51,65,85,0.4)",
+                border:
+                  hasToken && hasWallet
+                    ? "1px solid rgba(52,211,153,0.2)"
+                    : "1px solid rgba(51,65,85,0.4)",
               }}
             >
-              <div className="flex items-center gap-1.5">
-                <div
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ background: hasToken ? "#34d399" : "#475569" }}
-                />
-                <span
-                  className="text-[9px] font-mono"
-                  style={{ color: hasToken ? "#34d399" : "#475569" }}
-                >
-                  {hasToken ? "Token set — ready to execute" : "Token required"}
-                </span>
-              </div>
+              <div
+                className="w-1.5 h-1.5 rounded-full shrink-0"
+                style={{
+                  background: hasToken && hasWallet ? "#34d399" : "#475569",
+                }}
+              />
+              <span
+                className="text-[9px] font-mono"
+                style={{ color: hasToken && hasWallet ? "#34d399" : "#475569" }}
+              >
+                {hasToken && hasWallet
+                  ? "Ready"
+                  : !hasToken
+                    ? "Token required"
+                    : "Wallet required"}
+              </span>
             </div>
           </>
         );
       }
 
       case "volumeFarmer": {
-        const vfTokenPair = str(selectedNode.data.tokenPair, "sol-usdc-sol");
-        const vfWallet = str(
+        const pair = str(selectedNode.data.tokenPair, "sol-usdc-sol");
+        const wallet = str(
           (selectedNode.data.walletPublicKey as string | undefined) ??
             (selectedNode.data.connectedWallet as string | undefined),
           "",
         );
-        const vfIsCustom = vfTokenPair === "custom";
-
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Connected Wallet</FieldLabel>
+              <FieldLabel>Wallet</FieldLabel>
               <div
-                className="h-8 flex items-center justify-between px-3 rounded-md"
+                className="h-8 flex items-center px-3 rounded-md"
                 style={{
                   background: "rgba(2,6,23,0.9)",
                   border:
-                    vfWallet.length > 30
+                    wallet.length > 30
                       ? "1px solid rgba(52,211,153,0.3)"
                       : "1px solid rgba(248,113,113,0.25)",
                 }}
               >
-                {vfWallet.length > 30 ? (
-                  <>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                      <span className="text-[10px] font-mono text-emerald-400">
-                        {vfWallet.slice(0, 6)}…{vfWallet.slice(-4)}
-                      </span>
-                    </div>
-                    <span className="text-[8px] font-mono text-slate-600">
-                      from WalletConnect
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-[10px] font-mono text-red-400/70">
-                    No wallet — connect via WalletConnect node
-                  </span>
-                )}
+                <div
+                  className="w-1.5 h-1.5 rounded-full mr-2 shrink-0"
+                  style={{
+                    background: wallet.length > 30 ? "#34d399" : "#f87171",
+                  }}
+                />
+                <span
+                  className="text-[10px] font-mono"
+                  style={{
+                    color:
+                      wallet.length > 30 ? "#34d399" : "rgba(248,113,113,0.7)",
+                  }}
+                >
+                  {wallet.length > 30
+                    ? shortAddr(wallet)
+                    : "Connect via WalletConnect node"}
+                </span>
               </div>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel>Token Pair</FieldLabel>
+              <FieldLabel>Pair</FieldLabel>
               <StyledSelect
                 accent={accent}
-                value={vfTokenPair}
+                value={pair}
                 onChange={(v) => updateField("tokenPair", v)}
                 options={[
-                  {
-                    value: "sol-usdc-sol",
-                    label: "SOL → USDC → SOL (round trip)",
-                  },
+                  { value: "sol-usdc-sol", label: "SOL → USDC → SOL" },
                   { value: "sol-usdc", label: "SOL → USDC" },
                   { value: "usdc-sol", label: "USDC → SOL" },
                   { value: "sol-bonk", label: "SOL → BONK" },
                   { value: "sol-jup", label: "SOL → JUP" },
-                  { value: "custom", label: "Custom pair (enter mints)" },
+                  { value: "custom", label: "Custom pair" },
                 ]}
               />
             </FieldGroup>
-            {vfIsCustom && (
+            {pair === "custom" && (
               <>
                 <FieldGroup>
-                  <FieldLabel>Input Token Mint</FieldLabel>
+                  <FieldLabel>Input Mint</FieldLabel>
                   <StyledInput
-                    placeholder="So111...112 (SOL mint address)"
+                    placeholder="So111…112"
                     value={str(selectedNode.data.customInputMint)}
                     onChange={(e) =>
                       updateField("customInputMint", e.target.value)
@@ -2585,9 +2426,9 @@ export function NodePropertiesPanel() {
                   />
                 </FieldGroup>
                 <FieldGroup>
-                  <FieldLabel>Output Token Mint</FieldLabel>
+                  <FieldLabel>Output Mint</FieldLabel>
                   <StyledInput
-                    placeholder="EPjFW...t1v (USDC mint address)"
+                    placeholder="EPjFW…t1v"
                     value={str(selectedNode.data.customOutputMint)}
                     onChange={(e) =>
                       updateField("customOutputMint", e.target.value)
@@ -2612,8 +2453,6 @@ export function NodePropertiesPanel() {
                 <FieldLabel>$ / Swap</FieldLabel>
                 <StyledInput
                   type="number"
-                  min={0.01}
-                  step="0.01"
                   placeholder="5"
                   value={str(selectedNode.data.swapAmount)}
                   onChange={(e) => updateField("swapAmount", e.target.value)}
@@ -2623,12 +2462,13 @@ export function NodePropertiesPanel() {
                 <FieldLabel>Target $</FieldLabel>
                 <StyledInput
                   type="number"
-                  placeholder="optional"
+                  placeholder="∞"
                   value={str(selectedNode.data.targetVolume)}
                   onChange={(e) => updateField("targetVolume", e.target.value)}
                 />
               </FieldGroup>
             </div>
+            {/* FIX: delayMs was used by the node but never exposed in the panel */}
             <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
                 <FieldLabel>DEX</FieldLabel>
@@ -2639,29 +2479,9 @@ export function NodePropertiesPanel() {
                   options={[
                     { value: "jupiter", label: "Jupiter" },
                     { value: "raydium", label: "Raydium" },
-                    { value: "uniswap", label: "Uniswap" },
-                    { value: "pancakeswap", label: "PancakeSwap" },
                   ]}
                 />
               </FieldGroup>
-              <FieldGroup>
-                <FieldLabel>Chain</FieldLabel>
-                <StyledSelect
-                  accent={accent}
-                  value={str(selectedNode.data.chain, "solana")}
-                  onChange={(v) => updateField("chain", v)}
-                  options={[
-                    { value: "solana", label: "Solana" },
-                    { value: "arbitrum", label: "Arbitrum" },
-                    { value: "base", label: "Base" },
-                    { value: "ethereum", label: "Ethereum" },
-                    { value: "optimism", label: "Optimism" },
-                    { value: "polygon", label: "Polygon" },
-                  ]}
-                />
-              </FieldGroup>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
                 <FieldLabel>Slippage</FieldLabel>
                 <StyledSelect
@@ -2670,51 +2490,35 @@ export function NodePropertiesPanel() {
                   onChange={(v) => updateField("slippageBps", Number(v))}
                   options={[
                     { value: "10", label: "0.1%" },
-                    { value: "25", label: "0.25%" },
                     { value: "50", label: "0.5%" },
                     { value: "100", label: "1%" },
                     { value: "200", label: "2%" },
-                    { value: "300", label: "3%" },
-                  ]}
-                />
-              </FieldGroup>
-              <FieldGroup>
-                <FieldLabel>Delay</FieldLabel>
-                <StyledSelect
-                  accent={accent}
-                  value={str(selectedNode.data.delayMs, "1500")}
-                  onChange={(v) => updateField("delayMs", Number(v))}
-                  options={[
-                    { value: "500", label: "0.5s" },
-                    { value: "1000", label: "1s" },
-                    { value: "1500", label: "1.5s" },
-                    { value: "2000", label: "2s" },
-                    { value: "3000", label: "3s" },
-                    { value: "5000", label: "5s" },
                   ]}
                 />
               </FieldGroup>
             </div>
+            <FieldGroup>
+              <FieldLabel>Delay Between Swaps (ms)</FieldLabel>
+              <StyledInput
+                type="number"
+                placeholder="1500"
+                value={str(selectedNode.data.delayMs, "1500")}
+                onChange={(e) =>
+                  updateField(
+                    "delayMs",
+                    Math.max(500, parseInt(e.target.value) || 1500),
+                  )
+                }
+              />
+            </FieldGroup>
             <StyledCheckbox
-              id="randomize-vol"
+              id="vf-rand"
               checked={bool(selectedNode.data.randomizeAmounts)}
               onChange={(e) =>
                 updateField("randomizeAmounts", e.target.checked)
               }
-              label="Randomize amounts (±20% variance)"
+              label="Randomize amounts ±20%"
             />
-            <div
-              className="rounded-lg px-3 py-2"
-              style={{
-                background: "rgba(245,158,11,0.05)",
-                border: "1px solid rgba(245,158,11,0.12)",
-              }}
-            >
-              <p className="text-[8px] font-mono text-amber-400/50 leading-relaxed">
-                Real on-chain swaps via Jupiter v6. Wallet must be connected
-                upstream via WalletConnect node. Phantom signs each tx.
-              </p>
-            </div>
           </>
         );
       }
@@ -2722,8 +2526,18 @@ export function NodePropertiesPanel() {
       case "claimAirdrop":
         return (
           <>
+            {/* FIX: walletAddress is the field the node actually uses for live airdrop scanning */}
             <FieldGroup>
-              <FieldLabel>Project Name</FieldLabel>
+              <FieldLabel>Wallet Address (EVM)</FieldLabel>
+              <StyledInput
+                placeholder="0x…"
+                value={str(selectedNode.data.walletAddress)}
+                onChange={(e) => updateField("walletAddress", e.target.value)}
+                className="font-mono"
+              />
+            </FieldGroup>
+            <FieldGroup>
+              <FieldLabel>Project</FieldLabel>
               <StyledInput
                 placeholder="ProjectXYZ"
                 value={str(selectedNode.data.projectName)}
@@ -2731,9 +2545,9 @@ export function NodePropertiesPanel() {
               />
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel>Contract Address</FieldLabel>
+              <FieldLabel>Contract</FieldLabel>
               <StyledInput
-                placeholder="0x..."
+                placeholder="0x…"
                 value={str(selectedNode.data.contractAddress)}
                 onChange={(e) => updateField("contractAddress", e.target.value)}
                 className="font-mono"
@@ -2749,7 +2563,7 @@ export function NodePropertiesPanel() {
               />
             </FieldGroup>
             <StyledCheckbox
-              id="auto-sell"
+              id="ca-sell"
               checked={bool(selectedNode.data.autoSell)}
               onChange={(e) => updateField("autoSell", e.target.checked)}
               label="Auto-sell after claim"
@@ -2786,12 +2600,12 @@ export function NodePropertiesPanel() {
               </FieldGroup>
             </div>
             <StyledCheckbox
-              id="randomize"
+              id="wd-rand"
               checked={bool(selectedNode.data.randomize)}
               onChange={(e) => updateField("randomize", e.target.checked)}
               label="Add random variance"
             />
-            {selectedNode.data.randomize === true && (
+            {bool(selectedNode.data.randomize) && (
               <FieldGroup>
                 <FieldLabel>Variance %</FieldLabel>
                 <StyledInput
@@ -2812,7 +2626,7 @@ export function NodePropertiesPanel() {
               <FieldLabel>Iterations</FieldLabel>
               <StyledInput
                 type="number"
-                placeholder="leave empty for infinite"
+                placeholder="∞ unlimited"
                 value={str(selectedNode.data.iterations)}
                 onChange={(e) => updateField("iterations", e.target.value)}
               />
@@ -2825,15 +2639,18 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("breakCondition", e.target.value)}
               />
             </FieldGroup>
-            <FieldGroup>
-              <FieldLabel>Delay Between Loops</FieldLabel>
-              <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <FieldGroup>
+                <FieldLabel>Loop Delay</FieldLabel>
                 <StyledInput
                   type="number"
                   placeholder="0"
                   value={str(selectedNode.data.loopDelay)}
                   onChange={(e) => updateField("loopDelay", e.target.value)}
                 />
+              </FieldGroup>
+              <FieldGroup>
+                <FieldLabel>Unit</FieldLabel>
                 <StyledSelect
                   accent={accent}
                   value={str(selectedNode.data.loopDelayUnit, "seconds")}
@@ -2844,8 +2661,8 @@ export function NodePropertiesPanel() {
                     { value: "hours", label: "Hours" },
                   ]}
                 />
-              </div>
-            </FieldGroup>
+              </FieldGroup>
+            </div>
           </>
         );
 
@@ -2853,9 +2670,9 @@ export function NodePropertiesPanel() {
         return (
           <>
             <FieldGroup>
-              <FieldLabel>Token Symbol</FieldLabel>
+              <FieldLabel>Token</FieldLabel>
               <StyledInput
-                placeholder="ETH, SOL, PEPE..."
+                placeholder="ETH, SOL…"
                 value={str(selectedNode.data.token)}
                 onChange={(e) =>
                   updateField("token", e.target.value.toUpperCase())
@@ -2863,7 +2680,7 @@ export function NodePropertiesPanel() {
               />
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel>Price Source</FieldLabel>
+              <FieldLabel>Source</FieldLabel>
               <StyledSelect
                 accent={accent}
                 value={str(selectedNode.data.priceSource, "coingecko")}
@@ -2872,8 +2689,8 @@ export function NodePropertiesPanel() {
                   { value: "coingecko", label: "CoinGecko" },
                   { value: "coinmarketcap", label: "CoinMarketCap" },
                   { value: "dexscreener", label: "DexScreener" },
-                  { value: "jupiter", label: "Jupiter (Solana)" },
-                  { value: "chainlink", label: "Chainlink Oracle" },
+                  { value: "jupiter", label: "Jupiter" },
+                  { value: "chainlink", label: "Chainlink" },
                 ]}
               />
             </FieldGroup>
@@ -2914,16 +2731,48 @@ export function NodePropertiesPanel() {
                   value={str(selectedNode.data.urgency, "medium")}
                   onChange={(v) => updateField("urgency", v)}
                   options={[
-                    { value: "low", label: "Low (p25)" },
-                    { value: "medium", label: "Medium (p50)" },
-                    { value: "high", label: "High (p75)" },
+                    { value: "low", label: "Low" },
+                    { value: "medium", label: "Medium" },
+                    { value: "high", label: "High" },
                   ]}
                 />
               </FieldGroup>
             )}
+            {/* FIX: Jito bundle needs tip config — node fetches live data but tip was never configurable */}
+            {strategy === "jito" && (
+              <>
+                <FieldGroup>
+                  <FieldLabel>Fee Level</FieldLabel>
+                  <StyledSelect
+                    accent={accent}
+                    value={str(selectedNode.data.urgency, "medium")}
+                    onChange={(v) => updateField("urgency", v)}
+                    options={[
+                      { value: "low", label: "Low" },
+                      { value: "medium", label: "Medium" },
+                      { value: "high", label: "High" },
+                    ]}
+                  />
+                </FieldGroup>
+                <FieldGroup>
+                  <FieldLabel>Tip Override (lamports, 0 = auto)</FieldLabel>
+                  <StyledInput
+                    type="number"
+                    placeholder="0"
+                    value={str(selectedNode.data.jitoTipLamports, "0")}
+                    onChange={(e) =>
+                      updateField(
+                        "jitoTipLamports",
+                        Math.max(0, parseInt(e.target.value) || 0),
+                      )
+                    }
+                  />
+                </FieldGroup>
+              </>
+            )}
             {strategy === "wait" && (
               <FieldGroup>
-                <FieldLabel>Max Fee (microlamports)</FieldLabel>
+                <FieldLabel>Max Fee (µL)</FieldLabel>
                 <StyledInput
                   type="number"
                   placeholder="50000"
@@ -2933,7 +2782,7 @@ export function NodePropertiesPanel() {
               </FieldGroup>
             )}
             <FieldGroup>
-              <FieldLabel>Timeout (minutes)</FieldLabel>
+              <FieldLabel>Timeout (min)</FieldLabel>
               <StyledInput
                 type="number"
                 placeholder="60"
@@ -2941,20 +2790,6 @@ export function NodePropertiesPanel() {
                 onChange={(e) => updateField("timeout", e.target.value)}
               />
             </FieldGroup>
-            <div
-              className="rounded-lg px-3 py-2"
-              style={{
-                background: "rgba(132,204,22,0.04)",
-                border: "1px solid rgba(132,204,22,0.15)",
-              }}
-            >
-              <div className="text-[8px] font-mono text-slate-500 leading-relaxed">
-                // Solana only · microlamports · live data from{" "}
-                {strategy === "jito"
-                  ? "bundles.jito.wtf + Solana RPC"
-                  : "Solana Mainnet RPC"}
-              </div>
-            </div>
           </>
         );
       }
@@ -2968,16 +2803,9 @@ export function NodePropertiesPanel() {
     }
   };
 
-  return (
-    <div
-      className="absolute top-4 right-4 w-72 z-10 flex flex-col rounded-xl"
-      style={{
-        background: "rgba(2, 6, 23, 0.95)",
-        border: `1px solid ${accent}33`,
-        boxShadow: `0 0 0 1px ${accent}11, 0 24px 48px rgba(0,0,0,0.7), 0 0 24px ${accent}15`,
-        backdropFilter: "blur(20px)",
-      }}
-    >
+  // ─── Shared inner content ──────────────────────────────────────────────────
+  const header = (
+    <>
       <div
         className="flex items-center justify-between px-4 py-3 shrink-0"
         style={{ borderBottom: `1px solid ${accent}20` }}
@@ -2993,6 +2821,9 @@ export function NodePropertiesPanel() {
           >
             {nodeLabel}
           </span>
+          <span className="text-[7px] font-mono text-slate-700 shrink-0">
+            {selectedNode.id.slice(0, 6)}
+          </span>
         </div>
         <button
           onClick={handleClose}
@@ -3007,24 +2838,130 @@ export function NodePropertiesPanel() {
           background: `linear-gradient(90deg, ${accent}80, transparent 60%)`,
         }}
       />
+    </>
+  );
+
+  const footer = (
+    <div
+      className="px-4 py-3 shrink-0"
+      style={{ borderTop: `1px solid ${accent}15` }}
+    >
+      <button
+        onClick={handleDelete}
+        className="w-full h-8 rounded flex items-center justify-center gap-2 text-xs font-mono text-red-400/60 border border-red-500/20 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/5 transition-all duration-150"
+      >
+        <Trash2 className="w-3 h-3" />
+        delete node
+      </button>
+    </div>
+  );
+
+  // ─── Mobile: bottom sheet ──────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        {/* Backdrop */}
+        <div
+          onClick={handleClose}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 40,
+            background: "rgba(0,0,0,0.5)",
+            backdropFilter: "blur(3px)",
+          }}
+        />
+
+        {/* Sheet */}
+        <div
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 50,
+            borderRadius: "18px 18px 0 0",
+            background: "rgba(2,6,23,0.99)",
+            border: `1px solid ${accent}33`,
+            borderBottom: "none",
+            boxShadow: `0 -8px 48px rgba(0,0,0,0.8), 0 0 24px ${accent}15`,
+            backdropFilter: "blur(20px)",
+            display: "flex",
+            flexDirection: "column",
+            maxHeight: "80vh",
+            animation: "slideUp 0.25s cubic-bezier(0.32,0.72,0,1) forwards",
+          }}
+        >
+          {/* Drag handle */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              paddingTop: 12,
+              paddingBottom: 4,
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 4,
+                borderRadius: 2,
+                background: `${accent}40`,
+              }}
+            />
+          </div>
+          {header}
+          <div
+            className="flex flex-col gap-3 p-4 overflow-y-auto"
+            style={{
+              WebkitOverflowScrolling:
+                "touch" as React.CSSProperties["WebkitOverflowScrolling"],
+            }}
+          >
+            {renderFields()}
+          </div>
+          {/* Footer with safe-area bottom padding */}
+          <div
+            className="px-4 shrink-0"
+            style={{
+              borderTop: `1px solid ${accent}15`,
+              paddingTop: 12,
+              paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+            }}
+          >
+            <button
+              onClick={handleDelete}
+              className="w-full h-9 rounded-xl flex items-center justify-center gap-2 text-xs font-mono text-red-400/60 border border-red-500/20 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/5 transition-all"
+            >
+              <Trash2 className="w-3 h-3" />
+              delete node
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── Desktop: right panel ──────────────────────────────────────────────────
+  return (
+    <div
+      className="absolute top-4 right-4 w-72 z-10 flex flex-col rounded-xl"
+      style={{
+        background: "rgba(2,6,23,0.95)",
+        border: `1px solid ${accent}33`,
+        boxShadow: `0 0 0 1px ${accent}11, 0 24px 48px rgba(0,0,0,0.7), 0 0 24px ${accent}15`,
+        backdropFilter: "blur(20px)",
+      }}
+    >
+      {header}
       <div
         className="flex flex-col gap-3 p-4 overflow-y-auto"
         style={{ maxHeight: "calc(100vh - 180px)" }}
       >
         {renderFields()}
       </div>
-      <div
-        className="px-4 py-3 shrink-0"
-        style={{ borderTop: `1px solid ${accent}15` }}
-      >
-        <button
-          onClick={handleDelete}
-          className="w-full h-8 rounded flex items-center justify-center gap-2 text-xs font-mono text-red-400/60 border border-red-500/20 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/5 transition-all duration-150"
-        >
-          <Trash2 className="w-3 h-3" />
-          delete
-        </button>
-      </div>
+      {footer}
     </div>
   );
 }

@@ -38,6 +38,61 @@ const USDC: Record<number, string> = {
   59144: "0x176211869cA2b568f2A7D4EE941E073a821EE1ff",
 };
 
+// FIX: Canonical protocol names and their aliases from the frontend
+// Maps any incoming protocol string → the canonical key used in the switch
+const PROTOCOL_ALIASES: Record<string, string> = {
+  // Across
+  across: "Across",
+  Across: "Across",
+  // Hop
+  hop: "Hop",
+  Hop: "Hop",
+  "hop-protocol": "Hop",
+  // Synapse
+  synapse: "Synapse",
+  Synapse: "Synapse",
+  // LayerZero — not natively implemented; route to Across as the best
+  // gas-efficient alternative. Remove this mapping if you implement LayerZero.
+  layerzero: "Across",
+  LayerZero: "Across",
+  "layer-zero": "Across",
+  lz: "Across",
+  // Stargate (LayerZero-based) — same fallback
+  stargate: "Across",
+  Stargate: "Across",
+};
+
+// FIX: Chain name aliases — the frontend may send lowercase or kebab-case
+const CHAIN_ALIASES: Record<string, string> = {
+  ethereum: "Ethereum",
+  Ethereum: "Ethereum",
+  eth: "Ethereum",
+  arbitrum: "Arbitrum",
+  Arbitrum: "Arbitrum",
+  arb: "Arbitrum",
+  "arbitrum-one": "Arbitrum",
+  optimism: "Optimism",
+  Optimism: "Optimism",
+  op: "Optimism",
+  polygon: "Polygon",
+  Polygon: "Polygon",
+  matic: "Polygon",
+  base: "Base",
+  Base: "Base",
+  linea: "Linea",
+  Linea: "Linea",
+  zksync: "zkSync",
+  zkSync: "zkSync",
+  "zk-sync": "zkSync",
+  avalanche: "Avalanche",
+  Avalanche: "Avalanche",
+  avax: "Avalanche",
+  bsc: "BSC",
+  BSC: "BSC",
+  bnb: "BSC",
+  binance: "BSC",
+};
+
 interface CacheEntry {
   data: unknown;
   ts: number;
@@ -144,7 +199,6 @@ async function fetchHopQuote(
   url.searchParams.set("fromChain", sourceChain);
   url.searchParams.set("toChain", destChain);
   url.searchParams.set("slippage", "0.5");
-  // Reduced timeout to 5s — Hop API is slow; fail fast and return estimate
   const res = await fetch(url.toString(), {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(5000),
@@ -241,37 +295,90 @@ async function fetchSynapseQuote(
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const protocol = searchParams.get("protocol") ?? "";
-  const fromChain = searchParams.get("fromChain") ?? "";
-  const toChain = searchParams.get("toChain") ?? "";
+
+  const rawProtocol = searchParams.get("protocol") ?? "";
+  const rawFromChain = searchParams.get("fromChain") ?? "";
+  const rawToChain = searchParams.get("toChain") ?? "";
   const amountUsd = parseFloat(
     searchParams.get("amountUsd") ?? searchParams.get("amount") ?? "100",
   );
-  if (!protocol || !fromChain || !toChain)
+
+  // FIX: Validate required params before normalizing
+  if (!rawProtocol || !rawFromChain || !rawToChain) {
     return NextResponse.json(
       { error: "protocol, fromChain, toChain are required" },
       { status: 400 },
     );
-  if (fromChain === toChain)
+  }
+
+  // FIX: Normalize protocol and chain names via alias maps
+  const protocol = PROTOCOL_ALIASES[rawProtocol];
+  const fromChain = CHAIN_ALIASES[rawFromChain];
+  const toChain = CHAIN_ALIASES[rawToChain];
+
+  // FIX: Give a helpful error if protocol is unrecognized (not just "Unknown protocol")
+  if (!protocol) {
+    return NextResponse.json(
+      {
+        error: `Unsupported protocol: "${rawProtocol}". Supported: Across, Hop, Synapse (layerzero/stargate are routed via Across).`,
+        supported: Object.keys(PROTOCOL_ALIASES).filter(
+          (k) => k === PROTOCOL_ALIASES[k], // only show canonical names
+        ),
+      },
+      { status: 400 },
+    );
+  }
+
+  // FIX: Give a helpful error if chain names are unrecognized
+  if (!fromChain) {
+    return NextResponse.json(
+      {
+        error: `Unrecognized fromChain: "${rawFromChain}". Check the chain name spelling.`,
+      },
+      { status: 400 },
+    );
+  }
+  if (!toChain) {
+    return NextResponse.json(
+      {
+        error: `Unrecognized toChain: "${rawToChain}". Check the chain name spelling.`,
+      },
+      { status: 400 },
+    );
+  }
+
+  if (fromChain === toChain) {
     return NextResponse.json(
       { error: "Source and destination chains must differ" },
       { status: 400 },
     );
-  if (isNaN(amountUsd) || amountUsd <= 0)
+  }
+  if (isNaN(amountUsd) || amountUsd <= 0) {
     return NextResponse.json(
       { error: "amount must be a positive number" },
       { status: 400 },
     );
+  }
+
+  // FIX: Warn in response if protocol was aliased (e.g. layerzero → Across)
+  const wasAliased = protocol !== rawProtocol;
+  const aliasNote = wasAliased
+    ? `"${rawProtocol}" is not directly supported; using ${protocol} as the closest equivalent.`
+    : undefined;
 
   const key = `${protocol}:${fromChain}:${toChain}:${amountUsd}`;
   const now = Date.now();
   const hit = cache.get(key);
-  if (hit && now - hit.ts < CACHE_TTL)
-    return NextResponse.json(hit.data, {
-      headers: {
-        "Cache-Control": "public, max-age=20, stale-while-revalidate=10",
+  if (hit && now - hit.ts < CACHE_TTL) {
+    return NextResponse.json(
+      { ...(hit.data as object), ...(aliasNote ? { _note: aliasNote } : {}) },
+      {
+        headers: {
+          "Cache-Control": "public, max-age=20, stale-while-revalidate=10",
+        },
       },
-    });
+    );
+  }
 
   try {
     let data: unknown;
@@ -286,16 +393,28 @@ export async function GET(request: Request) {
         data = await fetchSynapseQuote(fromChain, toChain, amountUsd);
         break;
       default:
+        // This should never be reached due to alias map validation above
         return NextResponse.json(
           { error: `Unknown protocol: ${protocol}` },
           { status: 400 },
         );
     }
-    cache.set(key, { data, ts: now });
-    if (cache.size > 200)
-      for (const [k, v] of cache.entries())
+
+    // Attach alias note if protocol was remapped
+    const response = aliasNote
+      ? { ...(data as object), _note: aliasNote }
+      : data;
+
+    cache.set(key, { data: response, ts: now });
+
+    // Prune stale cache entries
+    if (cache.size > 200) {
+      for (const [k, v] of cache.entries()) {
         if (now - v.ts > 300_000) cache.delete(k);
-    return NextResponse.json(data, {
+      }
+    }
+
+    return NextResponse.json(response, {
       headers: {
         "Cache-Control": "public, max-age=20, stale-while-revalidate=10",
       },
@@ -305,6 +424,7 @@ export async function GET(request: Request) {
     console.error(
       "[bridge-quote]",
       protocol,
+      `(raw: ${rawProtocol})`,
       fromChain,
       "->",
       toChain,
@@ -320,6 +440,7 @@ export async function GET(request: Request) {
         estimatedTime: 120,
         isEstimate: true,
         estimateReason: "API timeout — showing ~0.1% fee estimate",
+        ...(aliasNote ? { _note: aliasNote } : {}),
       };
       return NextResponse.json(estimate, { status: 200 });
     }

@@ -46,6 +46,14 @@ const EVM_TOKENS: Record<string, Record<string, string>> = {
     WBTC: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
     GMX: "0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a",
   },
+  optimism: {
+    ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+    USDC: "0x7F5c764cBc14f9669B88837ca1490cCa17c31607",
+    USDT: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
+    WBTC: "0x68f180fcCe6836688e9084f035309E29Bf0A2095",
+    DAI: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
+    OP: "0x4200000000000000000000000000000000000042",
+  },
   base: {
     ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
     USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -54,9 +62,23 @@ const EVM_TOKENS: Record<string, Record<string, string>> = {
   },
 };
 
+// EVM chains where a given token actually exists — used for cross-chain validation
+const EVM_CHAINS = new Set(Object.keys(EVM_TOKENS));
+
+// ── Token validators ──────────────────────────────────────────────────────────
+
+function isSolanaToken(token: string): boolean {
+  return token.toUpperCase() in SOLANA_TOKENS;
+}
+
+function isEvmToken(chain: string, token: string): boolean {
+  const chainTokens = EVM_TOKENS[chain];
+  if (!chainTokens) return false;
+  return token.toUpperCase() in chainTokens;
+}
+
 // ── Jupiter (Solana) ─────────────────────────────────────────────────────────
 
-// CoinGecko IDs for price fallback (no API key needed, server-side works fine)
 const COINGECKO_IDS: Record<string, string> = {
   SOL: "solana",
   USDC: "usd-coin",
@@ -108,11 +130,17 @@ async function fetchJupiterQuote(
   const toUpper = toToken.toUpperCase();
   const inputMint = SOLANA_TOKENS[fromUpper];
   const outputMint = SOLANA_TOKENS[toUpper];
+
+  // FIX: Return structured error instead of null so caller can distinguish
+  // "unsupported token" from "API failure"
   if (!inputMint || !outputMint) {
     console.error(
       `[swap-quote] Unknown Solana token: ${fromToken} or ${toToken}`,
     );
-    return null;
+    return {
+      _error: "unsupported_token",
+      message: `Token(s) not supported on Solana: ${!inputMint ? fromToken : ""}${!inputMint && !outputMint ? ", " : ""}${!outputMint ? toToken : ""}. Available: ${Object.keys(SOLANA_TOKENS).join(", ")}`,
+    } as const;
   }
 
   const decimals: Record<string, number> = {
@@ -191,7 +219,7 @@ async function fetchJupiterQuote(
   if (!fromPrice || !toPrice) return null;
 
   const rate = fromPrice / toPrice;
-  const outAmount = amount * rate * (1 - 0.003); // ~0.3% estimated fee
+  const outAmount = amount * rate * (1 - 0.003);
   return {
     dex: "Jupiter (est.)",
     chain: "solana",
@@ -242,6 +270,7 @@ async function fetch1inchQuote(
     ARB: 18,
     GMX: 18,
     cbETH: 18,
+    OP: 18,
   };
   const dec = decimals[fromToken] ?? 18;
   const rawAmount = Math.floor(amount * Math.pow(10, dec)).toString();
@@ -271,7 +300,7 @@ async function fetch1inchQuote(
       inAmount,
       outAmount,
       rate: outAmount / inAmount,
-      priceImpact: data.estimatedGas ? null : null,
+      priceImpact: null,
       slippage,
       minReceived: outAmount * (1 - slippage / 100),
       route: data.protocols?.[0]?.[0]?.[0]?.name ?? "Aggregated",
@@ -307,6 +336,7 @@ async function fetchParaswapQuote(
     WBTC: 8,
     DAI: 18,
     ARB: 18,
+    OP: 18,
   };
   const dec = decimals[fromToken] ?? 18;
   const rawAmount = Math.floor(amount * Math.pow(10, dec)).toString();
@@ -354,15 +384,86 @@ async function fetchParaswapQuote(
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const fromToken = url.searchParams.get("fromToken") ?? "SOL";
-    const toToken = url.searchParams.get("toToken") ?? "USDC";
+    const fromToken = (
+      url.searchParams.get("fromToken") ?? "SOL"
+    ).toUpperCase();
+    const toToken = (url.searchParams.get("toToken") ?? "USDC").toUpperCase();
     const amount = parseFloat(url.searchParams.get("amount") ?? "1");
     const slippage = parseFloat(url.searchParams.get("slippage") ?? "0.5");
     const chain = (url.searchParams.get("chain") ?? "solana").toLowerCase();
-    const dex = url.searchParams.get("dex") ?? "auto";
+    // FIX: normalize dex param — uniswap is an EVM dex, not valid on Solana;
+    // treat it as "auto" so we fall through to 1inch/Paraswap on EVM chains.
+    const dexRaw = (url.searchParams.get("dex") ?? "auto").toLowerCase();
+    const SOLANA_DEXES = new Set(["jupiter", "orca", "raydium", "auto"]);
+    const EVM_DEXES = new Set(["1inch", "paraswap", "uniswap", "auto"]);
+    const dex = dexRaw; // kept for logging; routing logic uses sets above
 
     if (isNaN(amount) || amount <= 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+    }
+
+    // FIX: Validate token/chain compatibility before attempting any fetch
+    if (chain === "solana") {
+      if (!SOLANA_DEXES.has(dexRaw) && dexRaw !== "uniswap") {
+        return NextResponse.json(
+          {
+            error: `DEX "${dex}" is not supported on Solana. Use: jupiter, orca, raydium, or auto`,
+          },
+          { status: 400 },
+        );
+      }
+      if (!isSolanaToken(fromToken)) {
+        return NextResponse.json(
+          {
+            error: `"${fromToken}" is not a Solana token. Did you mean to use chain=ethereum or chain=arbitrum?`,
+            supportedTokens: Object.keys(SOLANA_TOKENS),
+          },
+          { status: 400 },
+        );
+      }
+      if (!isSolanaToken(toToken)) {
+        return NextResponse.json(
+          {
+            error: `"${toToken}" is not a Solana token. Did you mean to use chain=ethereum or chain=arbitrum?`,
+            supportedTokens: Object.keys(SOLANA_TOKENS),
+          },
+          { status: 400 },
+        );
+      }
+    } else if (EVM_CHAINS.has(chain)) {
+      if (!EVM_DEXES.has(dexRaw)) {
+        return NextResponse.json(
+          {
+            error: `DEX "${dex}" is not supported on ${chain}. Use: 1inch, paraswap, uniswap, or auto`,
+          },
+          { status: 400 },
+        );
+      }
+      if (!isEvmToken(chain, fromToken)) {
+        return NextResponse.json(
+          {
+            error: `"${fromToken}" is not supported on ${chain}.`,
+            supportedTokens: Object.keys(EVM_TOKENS[chain] ?? {}),
+          },
+          { status: 400 },
+        );
+      }
+      if (!isEvmToken(chain, toToken)) {
+        return NextResponse.json(
+          {
+            error: `"${toToken}" is not supported on ${chain}.`,
+            supportedTokens: Object.keys(EVM_TOKENS[chain] ?? {}),
+          },
+          { status: 400 },
+        );
+      }
+    } else {
+      return NextResponse.json(
+        {
+          error: `Unsupported chain: "${chain}". Supported: solana, ${Object.keys(CHAIN_IDS).join(", ")}`,
+        },
+        { status: 400 },
+      );
     }
 
     const cacheKey = `${chain}-${fromToken}-${toToken}-${amount}-${slippage}-${dex}`;
@@ -372,14 +473,28 @@ export async function GET(req: Request) {
     }
 
     let quote = null;
-    const dexLower = dex.toLowerCase();
 
     if (chain === "solana") {
       // All Solana DEX options (Jupiter, Orca, Raydium) route through Jupiter aggregator
-      quote = await fetchJupiterQuote(fromToken, toToken, amount, slippage);
+      const result = await fetchJupiterQuote(
+        fromToken,
+        toToken,
+        amount,
+        slippage,
+      );
+      // FIX: handle structured error object returned from fetchJupiterQuote
+      if (result && "_error" in result) {
+        return NextResponse.json({ error: result.message }, { status: 400 });
+      }
+      quote = result;
     } else {
-      // Try 1inch first, fallback to Paraswap
-      if (dexLower === "auto" || dexLower === "1inch") {
+      // EVM chains: try 1inch first (uniswap is treated as auto/1inch),
+      // then fall back to Paraswap
+      const use1inch =
+        dexRaw === "auto" || dexRaw === "1inch" || dexRaw === "uniswap";
+      const useParaswap = dexRaw === "auto" || dexRaw === "paraswap";
+
+      if (use1inch) {
         quote = await fetch1inchQuote(
           chain,
           fromToken,
@@ -388,7 +503,7 @@ export async function GET(req: Request) {
           slippage,
         );
       }
-      if (!quote && (dexLower === "auto" || dexLower === "paraswap")) {
+      if (!quote && useParaswap) {
         quote = await fetchParaswapQuote(
           chain,
           fromToken,
@@ -402,7 +517,7 @@ export async function GET(req: Request) {
     if (!quote) {
       return NextResponse.json(
         {
-          error: `No quote available for ${fromToken} → ${toToken} on ${chain}`,
+          error: `No quote available for ${fromToken} → ${toToken} on ${chain}. The DEX APIs may be temporarily unavailable.`,
         },
         { status: 502 },
       );

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -41,7 +41,7 @@ import { NodePropertiesPanel } from "./panels/NodePropertiesPanel";
 import { FlowControls } from "./panels/FlowControls";
 import { Header } from "./Header";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
-import { Trash2 } from "lucide-react";
+import { Trash2, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const nodeTypes: NodeTypes = {
@@ -67,7 +67,6 @@ const nodeTypes: NodeTypes = {
 
 function FitViewBridge({ onReady }: { onReady: (fn: () => void) => void }) {
   const { fitView } = useReactFlow();
-  useCallback(() => {}, [])();
   onReady(() => {
     fitView({ padding: 0.18, minZoom: 0.55, maxZoom: 0.85, duration: 400 });
   });
@@ -86,17 +85,17 @@ function FlowInner({
   const setSelectedNode = useFlowStore((s) => s.setSelectedNode);
   const deleteNode = useFlowStore((s) => s.deleteNode);
   const undo = useFlowStore((s) => s.undo);
+  const { fitView } = useReactFlow();
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
 
-  // ── Ctrl+Z undo listener ──────────────────────────────────────────────
+  // ── Ctrl+Z undo ──────────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
-        // Don't fire if user is typing in an input/textarea
         const tag = (e.target as HTMLElement).tagName;
         if (tag === "INPUT" || tag === "TEXTAREA") return;
         e.preventDefault();
@@ -109,18 +108,12 @@ function FlowInner({
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // Intercept "remove" changes so we can save a snapshot before deletion
       const removeChanges = changes.filter((c) => c.type === "remove");
       if (removeChanges.length > 0) {
-        // Save snapshot of current state before any removals
         const currentNodes = nodesRef.current;
         const currentEdges = edgesRef.current;
-        // Push snapshot via store's undo mechanism by calling deleteNode for each
-        // But we need the snapshot saved atomically — use the store's pushSnapshot
         useFlowStore.getState().pushSnapshot(currentNodes, currentEdges);
-        // Now apply all changes including removes
         setNodes(applyNodeChanges(changes, currentNodes) as Node[]);
-        // Also remove connected edges for removed nodes
         const removedIds = removeChanges.map((c) => (c as { id: string }).id);
         setEdges(
           currentEdges.filter(
@@ -182,16 +175,20 @@ function FlowInner({
       onPaneClick={onPaneClick}
       nodeTypes={nodeTypes}
       deleteKeyCode={["Backspace", "Delete"]}
+      // ── Selection: hold Ctrl/Cmd to box-select, never hijack plain drag ──
       selectionKeyCode="Control"
       multiSelectionKeyCode="Control"
+      // ── Pan on plain drag, select only with Ctrl held ──────────────────
       panOnDrag={true}
-      selectionOnDrag={true}
+      selectionOnDrag={false}
+      // ── Zoom ───────────────────────────────────────────────────────────
       panOnScroll={false}
       zoomOnScroll={true}
       zoomOnPinch={true}
       zoomActivationKeyCode={null}
       minZoom={0.1}
       maxZoom={2}
+      // ── Interaction ────────────────────────────────────────────────────
       nodesDraggable={true}
       nodesConnectable={true}
       nodesFocusable={true}
@@ -199,16 +196,16 @@ function FlowInner({
       elementsSelectable={true}
       autoPanOnConnect={true}
       autoPanOnNodeDrag={true}
+      // ── Initial view ───────────────────────────────────────────────────
       fitView
       fitViewOptions={{ maxZoom: 1 }}
       className="bg-transparent w-full h-full"
+      style={{ touchAction: "none" }}
       defaultEdgeOptions={{
         animated: true,
         style: { stroke: "rgb(56 189 248 / 0.6)", strokeWidth: 2 },
       }}
       proOptions={{ hideAttribution: true }}
-      // Faster zoom — default is 0.1, bumping to 0.25 makes it feel snappy
-      onWheel={undefined}
       translateExtent={[
         [-Infinity, -Infinity],
         [Infinity, Infinity],
@@ -224,6 +221,45 @@ function FlowInner({
         color="#22d3ee"
       />
 
+      {/* Fit-view button — always visible, bottom-left */}
+      <Panel position="bottom-left" className="mb-4 ml-4">
+        <button
+          onClick={() =>
+            fitView({ padding: 0.18, minZoom: 0.3, maxZoom: 1, duration: 400 })
+          }
+          title="Fit all nodes into view"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(10,15,35,0.85)",
+            border: "1px solid rgba(34,211,238,0.2)",
+            backdropFilter: "blur(12px)",
+            color: "rgba(34,211,238,0.7)",
+            cursor: "pointer",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background =
+              "rgba(34,211,238,0.15)";
+            (e.currentTarget as HTMLElement).style.color = "#22d3ee";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background =
+              "rgba(10,15,35,0.85)";
+            (e.currentTarget as HTMLElement).style.color =
+              "rgba(34,211,238,0.7)";
+          }}
+        >
+          <Maximize2 size={15} />
+        </button>
+      </Panel>
+
+      {/* Selection toolbar */}
       {selectedNodesCount > 0 && (
         <Panel position="bottom-center" className="mb-6">
           <div
@@ -269,7 +305,7 @@ export function FlowBuilder() {
 
   return (
     <ReactFlowProvider>
-      <div className="h-screen w-full relative">
+      <div className="h-screen w-full relative" style={{ touchAction: "none" }}>
         <Header onTemplateLoad={handleTemplateLoad} />
 
         <div className="absolute inset-0 pt-14">

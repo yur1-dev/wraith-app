@@ -39,8 +39,6 @@ function timeAgo(iso?: string): string {
   return `${Math.floor(m / 60)}h ago`;
 }
 
-// ── Inline editable name ──────────────────────────────────────────────────────
-
 function EditableName({
   scheduleId,
   name,
@@ -68,14 +66,6 @@ function EditableName({
     setEditing(false);
   };
 
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") save();
-    if (e.key === "Escape") {
-      setValue(name);
-      setEditing(false);
-    }
-  };
-
   if (editing) {
     return (
       <div className="flex items-center gap-1 flex-1 min-w-0">
@@ -83,7 +73,13 @@ function EditableName({
           ref={inputRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onKeyDown={onKey}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+            if (e.key === "Escape") {
+              setValue(name);
+              setEditing(false);
+            }
+          }}
           onBlur={save}
           className="flex-1 min-w-0 bg-slate-800 border border-cyan-500/40 rounded px-2 py-0.5 text-xs font-mono text-slate-200 focus:outline-none"
           maxLength={40}
@@ -116,8 +112,6 @@ function EditableName({
     </div>
   );
 }
-
-// ── Main dialog ───────────────────────────────────────────────────────────────
 
 interface ScheduleDialogProps {
   open: boolean;
@@ -212,20 +206,27 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center sm:p-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-2xl overflow-hidden flex flex-col"
+        className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col"
         style={{
           background: "rgba(5,10,20,0.98)",
           border: "1px solid rgba(56,189,248,0.2)",
-          boxShadow: "0 32px 64px rgba(0,0,0,0.9)",
-          maxHeight: "85vh",
+          boxShadow:
+            "0 -16px 48px rgba(0,0,0,0.6), 0 32px 64px rgba(0,0,0,0.9)",
+          maxHeight: "90vh",
         }}
       >
+        {/* Mobile drag handle */}
+        <div className="flex justify-center pt-3 sm:hidden">
+          <div className="w-10 h-1 rounded-full bg-slate-700" />
+        </div>
+
         <div
-          className="h-px w-full"
+          className="h-px w-full shrink-0"
           style={{
             background:
               "linear-gradient(90deg, transparent, #22d3ee, #818cf8, transparent)",
@@ -234,12 +235,12 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
 
         {/* Header */}
         <div
-          className="flex items-center justify-between px-5 py-4"
+          className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 shrink-0"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
         >
           <div className="flex items-center gap-3">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
               style={{ background: "rgba(34,211,238,0.15)" }}
             >
               <Clock className="w-4 h-4 text-cyan-400" />
@@ -261,14 +262,14 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
 
         {/* Tabs */}
         <div
-          className="flex gap-1 px-5 py-3"
+          className="flex gap-1 px-4 sm:px-5 py-2.5 sm:py-3 shrink-0"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
         >
           {(["create", "manage"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className="px-4 py-1.5 rounded-lg text-[11px] font-mono font-semibold tracking-wider transition-all capitalize"
+              className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-lg text-[11px] font-mono font-semibold tracking-wider transition-all capitalize"
               style={{
                 background: tab === t ? "rgba(34,211,238,0.1)" : "transparent",
                 color: tab === t ? "rgb(34,211,238)" : "rgb(100,116,139)",
@@ -285,7 +286,7 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
 
         {/* CREATE TAB */}
         {tab === "create" && (
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
             {!isConnected && (
               <div className="p-3 rounded-lg text-xs font-mono text-amber-400 border border-amber-500/20 bg-amber-500/5">
                 ⚠️ Connect wallet first to schedule flows
@@ -372,7 +373,7 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
             <button
               onClick={handleCreate}
               disabled={!isConnected || nodes.length === 0 || creating}
-              className="w-full h-10 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+              className="w-full h-11 sm:h-10 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
               style={{
                 background:
                   !isConnected || nodes.length === 0
@@ -397,7 +398,7 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
 
         {/* MANAGE TAB */}
         {tab === "manage" && (
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-2">
             {schedules.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2">
                 <Clock className="w-6 h-6 text-slate-700" />
@@ -415,10 +416,9 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
                     border: `1px solid ${schedule.enabled ? "rgba(34,211,238,0.2)" : "rgba(255,255,255,0.06)"}`,
                   }}
                 >
-                  <div className="px-4 py-3">
+                  <div className="px-3 sm:px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        {/* Editable name */}
                         <div className="flex items-center gap-2 mb-1.5">
                           <div
                             className={`w-1.5 h-1.5 rounded-full shrink-0 ${schedule.enabled ? "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]" : "bg-slate-700"}`}
@@ -429,8 +429,7 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
                             onSave={handleRename}
                           />
                         </div>
-
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                           <span className="text-[10px] font-mono text-slate-600 capitalize">
                             {schedule.scheduleType}{" "}
                             {schedule.scheduleTime &&
@@ -443,7 +442,7 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
                             {schedule.runCount} runs
                           </span>
                         </div>
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-2 sm:gap-3 mt-1 flex-wrap">
                           {schedule.enabled ? (
                             <span className="text-[10px] font-mono text-cyan-500">
                               next in {timeUntil(schedule.nextRun)}
@@ -467,7 +466,7 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
                           onClick={() =>
                             handleToggle(schedule.scheduleId, !schedule.enabled)
                           }
-                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
                           style={{
                             background: schedule.enabled
                               ? "rgba(34,211,238,0.1)"
@@ -479,14 +478,14 @@ export function ScheduleDialog({ open, onClose }: ScheduleDialogProps) {
                           }}
                           title={schedule.enabled ? "Pause" : "Resume"}
                         >
-                          <Power size={12} />
+                          <Power size={13} />
                         </button>
                         <button
                           onClick={() => handleDelete(schedule.scheduleId)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                           title="Delete"
                         >
-                          <Trash2 size={12} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>

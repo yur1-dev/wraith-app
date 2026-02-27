@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Zap, ChevronRight, Users, Fuel } from "lucide-react";
+import { X, Zap, ChevronRight, Users, Fuel, ChevronDown } from "lucide-react";
 import {
   TEMPLATES,
   CATEGORIES,
@@ -15,7 +15,7 @@ import type { Node } from "@xyflow/react";
 interface TemplatesGalleryProps {
   open: boolean;
   onClose: () => void;
-  onAfterLoad?: () => void; // called after nodes/edges set so parent (inside ReactFlow) can fitView
+  onAfterLoad?: () => void;
 }
 
 const NODE_TYPE_COLORS: Record<string, string> = {
@@ -48,6 +48,7 @@ export function TemplatesGallery({
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [preview, setPreview] = useState<FlowTemplate | null>(null);
   const [justLoaded, setJustLoaded] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false); // mobile preview sheet
 
   if (!open) return null;
 
@@ -60,21 +61,24 @@ export function TemplatesGallery({
     setNodes(template.nodes);
     setEdges(template.edges);
     setJustLoaded(template.id);
-
-    // Let the parent (which lives inside ReactFlow provider) call fitView
     setTimeout(() => {
       onAfterLoad?.();
     }, 80);
-
     setTimeout(() => {
       setJustLoaded(null);
       onClose();
     }, 900);
   };
 
+  const handleSelectTemplate = (template: FlowTemplate) => {
+    const isActive = preview?.id === template.id;
+    setPreview(isActive ? null : template);
+    setPreviewOpen(!isActive);
+  };
+
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center p-4"
+      className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
       style={{
         zIndex: 99998,
         background: "rgba(0,0,0,0.75)",
@@ -83,20 +87,27 @@ export function TemplatesGallery({
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full flex rounded-2xl overflow-hidden"
+        className="w-full sm:flex rounded-t-2xl sm:rounded-2xl overflow-hidden"
         style={{
           maxWidth: preview ? 900 : 680,
-          maxHeight: "88vh",
+          maxHeight: "92vh",
           background: "rgba(5, 10, 20, 0.99)",
           border: "1px solid rgba(56,189,248,0.15)",
           boxShadow:
-            "0 0 0 1px rgba(56,189,248,0.05), 0 40px 80px rgba(0,0,0,0.9)",
+            "0 0 0 1px rgba(56,189,248,0.05), 0 -16px 48px rgba(0,0,0,0.6), 0 40px 80px rgba(0,0,0,0.9)",
           transition: "max-width 0.3s ease",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        {/* ── LEFT PANEL ─────────────────────────────────── */}
-        <div className="flex flex-col flex-1 min-w-0">
-          {/* Top accent line */}
+        {/* ── LEFT / MAIN PANEL ── */}
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
+          {/* Mobile drag handle */}
+          <div className="flex justify-center pt-3 sm:hidden shrink-0">
+            <div className="w-10 h-1 rounded-full bg-slate-700" />
+          </div>
+
+          {/* Top accent */}
           <div
             className="h-px w-full shrink-0"
             style={{
@@ -107,12 +118,12 @@ export function TemplatesGallery({
 
           {/* Header */}
           <div
-            className="flex items-center justify-between px-5 py-4 shrink-0"
+            className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 shrink-0"
             style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
           >
             <div className="flex items-center gap-3">
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                 style={{ background: "rgba(34,211,238,0.1)" }}
               >
                 <Zap className="w-4 h-4 text-cyan-400" />
@@ -122,7 +133,7 @@ export function TemplatesGallery({
                   Template Gallery
                 </h2>
                 <p className="text-[10px] text-slate-500">
-                  {TEMPLATES.length} pre-built flows ready to use
+                  {TEMPLATES.length} pre-built flows
                 </p>
               </div>
             </div>
@@ -145,10 +156,13 @@ export function TemplatesGallery({
             </button>
           </div>
 
-          {/* Category tabs */}
+          {/* Category tabs — scrollable */}
           <div
-            className="flex gap-1 px-5 py-3 shrink-0 overflow-x-auto"
-            style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+            className="flex gap-1 px-4 sm:px-5 py-2.5 sm:py-3 shrink-0 overflow-x-auto"
+            style={{
+              borderBottom: "1px solid rgba(255,255,255,0.04)",
+              scrollbarWidth: "none",
+            }}
           >
             {CATEGORIES.map((cat: Category) => (
               <button
@@ -158,7 +172,7 @@ export function TemplatesGallery({
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
-                  padding: "6px 12px",
+                  padding: "5px 10px",
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 500,
@@ -185,7 +199,7 @@ export function TemplatesGallery({
           </div>
 
           {/* Template list */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3">
             {filtered.map((template: FlowTemplate) => {
               const diff = DIFFICULTY_STYLES[template.difficulty];
               const isActive = preview?.id === template.id;
@@ -194,7 +208,7 @@ export function TemplatesGallery({
               return (
                 <div
                   key={template.id}
-                  onClick={() => setPreview(isActive ? null : template)}
+                  onClick={() => handleSelectTemplate(template)}
                   className="rounded-xl overflow-hidden"
                   style={{
                     background: isActive
@@ -208,7 +222,6 @@ export function TemplatesGallery({
                     transition: "all 0.15s",
                   }}
                 >
-                  {/* Color top bar */}
                   <div
                     style={{
                       height: 2,
@@ -217,14 +230,14 @@ export function TemplatesGallery({
                     }}
                   />
 
-                  <div className="p-4">
-                    <div className="flex items-start gap-3">
-                      {/* Color icon box */}
+                  <div className="p-3 sm:p-4">
+                    <div className="flex items-start gap-2 sm:gap-3">
+                      {/* Color icon */}
                       <div
                         style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 12,
+                          width: 36,
+                          height: 36,
+                          borderRadius: 10,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -235,7 +248,7 @@ export function TemplatesGallery({
                       >
                         <span
                           style={{
-                            fontSize: 10,
+                            fontSize: 9,
                             fontFamily: "monospace",
                             fontWeight: 700,
                             letterSpacing: "0.05em",
@@ -247,9 +260,8 @@ export function TemplatesGallery({
                         </span>
                       </div>
 
-                      {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="text-sm font-semibold text-white">
                             {template.name}
                           </span>
@@ -283,8 +295,8 @@ export function TemplatesGallery({
                           {template.description}
                         </p>
 
-                        {/* Stats */}
-                        <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                        {/* Stats + tags — compact on mobile */}
+                        <div className="flex items-center gap-3 mt-2 flex-wrap">
                           <div
                             style={{
                               display: "flex",
@@ -309,18 +321,7 @@ export function TemplatesGallery({
                             <Fuel size={9} />
                             {template.estimatedGas}
                           </div>
-                        </div>
-
-                        {/* Tags */}
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: 4,
-                            marginTop: 8,
-                          }}
-                        >
-                          {template.tags.slice(0, 4).map((tag: string) => (
+                          {template.tags.slice(0, 3).map((tag: string) => (
                             <span
                               key={tag}
                               style={{
@@ -339,7 +340,6 @@ export function TemplatesGallery({
                         </div>
                       </div>
 
-                      {/* Arrow */}
                       <ChevronRight
                         size={14}
                         style={{
@@ -355,7 +355,7 @@ export function TemplatesGallery({
                       />
                     </div>
 
-                    {/* Load button — only when active */}
+                    {/* Load button when active — on mobile shows inline, on desktop shows in right panel */}
                     {isActive && (
                       <button
                         onClick={(e) => {
@@ -401,19 +401,18 @@ export function TemplatesGallery({
           </div>
         </div>
 
-        {/* ── RIGHT PANEL - Preview ─────────────────────── */}
+        {/* ── RIGHT PANEL - Preview (desktop only) ── */}
         {preview && (
           <div
+            className="hidden sm:flex"
             style={{
               width: 260,
               flexShrink: 0,
               borderLeft: "1px solid rgba(255,255,255,0.06)",
               background: "rgba(8,12,24,0.8)",
-              display: "flex",
               flexDirection: "column",
             }}
           >
-            {/* Preview header */}
             <div
               style={{
                 padding: "16px",
@@ -452,7 +451,6 @@ export function TemplatesGallery({
               </p>
             </div>
 
-            {/* Node flow */}
             <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
               <p
                 style={{
@@ -466,9 +464,7 @@ export function TemplatesGallery({
               >
                 Execution Flow
               </p>
-
               <div style={{ position: "relative" }}>
-                {/* Vertical line */}
                 <div
                   style={{
                     position: "absolute",
@@ -479,7 +475,6 @@ export function TemplatesGallery({
                     background: `linear-gradient(180deg, ${preview.color}40, transparent)`,
                   }}
                 />
-
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 8 }}
                 >
@@ -550,7 +545,6 @@ export function TemplatesGallery({
               </div>
             </div>
 
-            {/* Load CTA */}
             <div
               style={{
                 padding: "16px",

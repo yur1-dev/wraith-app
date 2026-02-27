@@ -123,7 +123,6 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
     disconnectAll,
     updateLabel,
   } = useWallet();
-
   const [editingAddress, setEditingAddress] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
@@ -146,10 +145,8 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
 
   const accentColor = (type: "phantom" | "metamask") =>
     type === "phantom" ? "#c084fc" : "#fbbf24";
-
   const accentBg = (type: "phantom" | "metamask") =>
     type === "phantom" ? "rgba(168,85,247,0.12)" : "rgba(245,158,11,0.12)";
-
   const accentBorder = (type: "phantom" | "metamask", active: boolean) =>
     active
       ? type === "phantom"
@@ -159,7 +156,7 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
 
   return (
     <div
-      className="absolute right-0 top-12 z-50 w-80 rounded-2xl overflow-hidden"
+      className="absolute right-0 top-12 z-50 w-[calc(100vw-24px)] max-w-xs sm:w-80 rounded-2xl overflow-hidden"
       style={{
         background: "rgba(2, 6, 23, 0.98)",
         border: "1px solid rgba(34,211,238,0.2)",
@@ -195,14 +192,14 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
         </div>
         <button
           onClick={onClose}
-          className="text-slate-500 hover:text-white transition-colors"
+          className="text-slate-500 hover:text-white transition-colors p-1"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* Wallet list */}
-      <div className="p-2 space-y-1 max-h-72 overflow-y-auto">
+      <div className="p-2 space-y-1 max-h-64 sm:max-h-72 overflow-y-auto">
         {wallets.map((w) => {
           const isActive = w.address === activeWalletAddress;
           const isEditing = editingAddress === w.address;
@@ -218,15 +215,13 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
               onClick={() => !isEditing && setActiveWallet(w.address)}
             >
               <div className="flex items-center gap-3">
-                {/* Icon */}
                 <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center shrink-0"
                   style={{ background: accentBg(w.type) }}
                 >
-                  <WalletIcon type={w.type} size={20} />
+                  <WalletIcon type={w.type} size={18} />
                 </div>
 
-                {/* Label + address */}
                 <div className="flex-1 min-w-0">
                   {isEditing ? (
                     <input
@@ -257,7 +252,6 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
                   </div>
                 </div>
 
-                {/* Active check */}
                 {isActive && (
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
@@ -268,7 +262,7 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
                 )}
               </div>
 
-              {/* Action buttons (show on hover or active) */}
+              {/* Action buttons — visible on hover OR always on touch devices */}
               <div
                 className="flex items-center gap-1 mt-2 pt-2 border-t opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ borderColor: "rgba(255,255,255,0.05)" }}
@@ -291,18 +285,16 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
                   onClick={() => handleStartEdit(w)}
                   className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
                 >
-                  <Pencil className="w-3 h-3" />
-                  Rename
+                  <Pencil className="w-3 h-3" /> Rename
                 </button>
                 {w.type === "metamask" && (
                   <a
                     href={`https://etherscan.io/address/${w.address}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                    className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
                   >
-                    <ExternalLink className="w-3 h-3" />
-                    Explorer
+                    <ExternalLink className="w-3 h-3" /> Explorer
                   </a>
                 )}
                 <button
@@ -310,8 +302,7 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
                   onClick={() => disconnectWallet(w.address)}
                   className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-red-500 hover:text-red-400 hover:bg-red-500/10 transition-colors ml-auto"
                 >
-                  <Trash2 className="w-3 h-3" />
-                  Remove
+                  <Trash2 className="w-3 h-3" /> Remove
                 </button>
               </div>
             </div>
@@ -319,11 +310,11 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
         })}
       </div>
 
-      {/* Footer actions */}
+      {/* Footer */}
       <div className="p-2 border-t border-white/5 space-y-1">
         <button
           onClick={onAddWallet}
-          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
+          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.98]"
           style={{
             background: "rgba(34,211,238,0.05)",
             border: "1px solid rgba(34,211,238,0.15)",
@@ -338,17 +329,14 @@ export function WalletSwitcher({ onClose, onAddWallet }: WalletSwitcherProps) {
               "rgba(34,211,238,0.05)";
           }}
         >
-          <Plus className="w-4 h-4" />
-          Add Wallet
+          <Plus className="w-4 h-4" /> Add Wallet
         </button>
-
         {wallets.length > 1 && (
           <button
             onClick={disconnectAll}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-red-400 hover:bg-red-500/5 transition-all"
           >
-            <Trash2 className="w-3.5 h-3.5" />
-            Disconnect All
+            <Trash2 className="w-3.5 h-3.5" /> Disconnect All
           </button>
         )}
       </div>

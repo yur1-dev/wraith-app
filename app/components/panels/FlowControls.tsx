@@ -14,6 +14,8 @@ import {
   Wallet,
   History,
   Clock,
+  MoreHorizontal,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -39,7 +41,6 @@ import { ScheduleDialog } from "./ScheduleDialog";
 export function FlowControls() {
   const { nodes, edges, setNodes, setEdges } = useFlowStore();
 
-  // New multi-wallet store: call as functions, not values
   const isConnected = useWallet((s) => s.isConnected());
   const walletAddress = useWallet((s) => s.walletAddress());
   const wallets = useWallet((s) => s.wallets);
@@ -56,12 +57,24 @@ export function FlowControls() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
+  // Desktop: draggable pill
   const [minimized, setMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [initialized, setInitialized] = useState(false);
   const dragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // Mobile: bottom sheet open state
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     if (!initialized && typeof window !== "undefined") {
@@ -75,6 +88,7 @@ export function FlowControls() {
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      if (isMobile) return;
       if (!(e.target as HTMLElement).closest("[data-drag-handle]")) return;
       e.preventDefault();
       dragging.current = true;
@@ -83,7 +97,7 @@ export function FlowControls() {
         y: e.clientY - position.y,
       };
     },
-    [position],
+    [position, isMobile],
   );
 
   useEffect(() => {
@@ -167,6 +181,7 @@ export function FlowControls() {
       return;
     }
     setRunDialogOpen(true);
+    setMobileOpen(false);
   };
 
   const truncateAddress = (addr: string) =>
@@ -174,6 +189,254 @@ export function FlowControls() {
 
   if (!initialized) return null;
 
+  // ── MOBILE LAYOUT ─────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        {/* Mobile FAB trigger */}
+        <div style={{ position: "fixed", bottom: 20, right: 16, zIndex: 9999 }}>
+          <button
+            onClick={() => setMobileOpen((v) => !v)}
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: mobileOpen
+                ? "rgba(34,211,238,0.2)"
+                : "rgba(10,15,25,0.95)",
+              border: "1px solid rgba(56,189,248,0.4)",
+              backdropFilter: "blur(16px)",
+              color: "rgb(34,211,238)",
+              cursor: "pointer",
+              boxShadow:
+                "0 0 24px rgba(56,189,248,0.25), 0 8px 24px rgba(0,0,0,0.6)",
+              transition: "all 0.2s",
+            }}
+          >
+            {mobileOpen ? <X size={20} /> : <MoreHorizontal size={20} />}
+          </button>
+        </div>
+
+        {/* Mobile bottom sheet */}
+        {mobileOpen && (
+          <>
+            <div
+              onClick={() => setMobileOpen(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 9997,
+                background: "rgba(0,0,0,0.5)",
+                backdropFilter: "blur(2px)",
+              }}
+            />
+            <div
+              style={{
+                position: "fixed",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 9998,
+                borderRadius: "16px 16px 0 0",
+                background: "rgba(10,15,25,0.98)",
+                border: "1px solid rgba(56,189,248,0.2)",
+                borderBottom: "none",
+                backdropFilter: "blur(20px)",
+                padding: "8px 16px 32px",
+                boxShadow: "0 -16px 48px rgba(0,0,0,0.6)",
+              }}
+            >
+              {/* Drag handle */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  padding: "8px 0 12px",
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 4,
+                    borderRadius: 2,
+                    background: "rgba(56,189,248,0.3)",
+                  }}
+                />
+              </div>
+
+              {/* Label */}
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.15em",
+                  color: "rgba(56,189,248,0.6)",
+                  textTransform: "uppercase",
+                  marginBottom: 16,
+                  textAlign: "center",
+                }}
+              >
+                Wraith Controls
+              </div>
+
+              {/* Action grid */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: 8,
+                  marginBottom: 12,
+                }}
+              >
+                <MobileBtn
+                  icon={<Save size={18} />}
+                  label="Save"
+                  onClick={() => {
+                    setSaveDialogOpen(true);
+                    setMobileOpen(false);
+                  }}
+                />
+                <MobileBtn
+                  icon={<FolderOpen size={18} />}
+                  label="Load"
+                  onClick={() => {
+                    handleOpenLoadDialog();
+                    setMobileOpen(false);
+                  }}
+                />
+                <MobileBtn
+                  icon={<Download size={18} />}
+                  label="Export"
+                  onClick={() => {
+                    handleExport();
+                    setMobileOpen(false);
+                  }}
+                />
+                <MobileBtn
+                  icon={<Upload size={18} />}
+                  label="Import"
+                  asLabel
+                  onImport={handleImport}
+                  onClose={() => setMobileOpen(false)}
+                />
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: 8,
+                  marginBottom: 16,
+                }}
+              >
+                <MobileBtn
+                  icon={<Clock size={18} />}
+                  label="Schedule"
+                  onClick={() => {
+                    setScheduleOpen(true);
+                    setMobileOpen(false);
+                  }}
+                  active={scheduleOpen}
+                />
+                <MobileBtn
+                  icon={<History size={18} />}
+                  label="History"
+                  onClick={() => {
+                    setHistoryOpen(true);
+                    setMobileOpen(false);
+                  }}
+                  active={historyOpen}
+                />
+                <MobileBtn
+                  icon={<Wallet size={18} />}
+                  label={
+                    isConnected && walletAddress
+                      ? truncateAddress(walletAddress)
+                      : "Wallet"
+                  }
+                  onClick={() => {
+                    setWalletModalOpen(true);
+                    setMobileOpen(false);
+                  }}
+                  active={isConnected}
+                  green={isConnected}
+                />
+                <div /> {/* spacer */}
+              </div>
+
+              {/* Run button */}
+              <button
+                onClick={handleRunClick}
+                disabled={nodes.length === 0}
+                style={{
+                  width: "100%",
+                  height: 48,
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  background:
+                    nodes.length === 0
+                      ? "rgba(34,197,94,0.15)"
+                      : "linear-gradient(135deg, #22d3ee, #818cf8)",
+                  color: nodes.length === 0 ? "rgba(34,197,94,0.4)" : "white",
+                  border: "none",
+                  cursor: nodes.length === 0 ? "not-allowed" : "pointer",
+                  opacity: nodes.length === 0 ? 0.5 : 1,
+                  boxShadow:
+                    nodes.length > 0 ? "0 0 24px rgba(34,211,238,0.3)" : "none",
+                }}
+              >
+                <Play size={16} />
+                Execute Flow
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Dialogs */}
+        <SaveDialog
+          open={saveDialogOpen}
+          onOpenChange={setSaveDialogOpen}
+          flowName={flowName}
+          setFlowName={setFlowName}
+          flowDescription={flowDescription}
+          setFlowDescription={setFlowDescription}
+          onSave={handleSave}
+        />
+        <LoadDialog
+          open={loadDialogOpen}
+          onOpenChange={setLoadDialogOpen}
+          savedFlows={savedFlows}
+          onLoad={handleLoad}
+          onDelete={handleDeleteFlow}
+        />
+        {historyOpen && (
+          <ExecutionHistoryPanel onClose={() => setHistoryOpen(false)} />
+        )}
+        <ScheduleDialog
+          open={scheduleOpen}
+          onClose={() => setScheduleOpen(false)}
+        />
+        <RunFlowDialog
+          open={runDialogOpen}
+          onClose={() => setRunDialogOpen(false)}
+        />
+        <WalletConnectModal
+          open={walletModalOpen}
+          onOpenChange={setWalletModalOpen}
+        />
+      </>
+    );
+  }
+
+  // ── DESKTOP LAYOUT (original draggable pill) ───────────────────────────────
   return (
     <>
       <div
@@ -274,109 +537,34 @@ export function FlowControls() {
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 {/* Save */}
-                <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
-                  <DialogTrigger asChild>
-                    <ToolBtn title="Save Flow">
-                      <Save size={15} />
-                    </ToolBtn>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Save Flow</DialogTitle>
-                      <DialogDescription>
-                        Save your flow to load it later
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label>Flow Name</Label>
-                        <Input
-                          value={flowName}
-                          onChange={(e) => setFlowName(e.target.value)}
-                          placeholder="LayerZero Farmer"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Description</Label>
-                        <Input
-                          value={flowDescription}
-                          onChange={(e) => setFlowDescription(e.target.value)}
-                          placeholder="Daily farming across 20 wallets"
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button onClick={handleSave}>Save Flow</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                <SaveDialog
+                  open={saveDialogOpen}
+                  onOpenChange={setSaveDialogOpen}
+                  flowName={flowName}
+                  setFlowName={setFlowName}
+                  flowDescription={flowDescription}
+                  setFlowDescription={setFlowDescription}
+                  onSave={handleSave}
+                  asToolBtn
+                />
 
                 {/* Load */}
-                <Dialog open={loadDialogOpen} onOpenChange={setLoadDialogOpen}>
-                  <DialogTrigger asChild>
-                    <ToolBtn title="Load Flow" onClick={handleOpenLoadDialog}>
-                      <FolderOpen size={15} />
-                    </ToolBtn>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Load Flow</DialogTitle>
-                      <DialogDescription>
-                        Select a saved flow to load
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {savedFlows.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-8">
-                          No saved flows yet.
-                        </p>
-                      ) : (
-                        savedFlows.map((flow) => (
-                          <Card key={flow.id} className="p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <h4 className="font-semibold">{flow.name}</h4>
-                                <p className="text-sm text-muted-foreground">
-                                  {flow.description}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  {flow.nodes.length} nodes · Updated{" "}
-                                  {new Date(
-                                    flow.updatedAt,
-                                  ).toLocaleDateString()}
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleLoad(flow.id)}
-                                >
-                                  Load
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleDeleteFlow(flow.id)}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <LoadDialog
+                  open={loadDialogOpen}
+                  onOpenChange={setLoadDialogOpen}
+                  savedFlows={savedFlows}
+                  onLoad={handleLoad}
+                  onDelete={handleDeleteFlow}
+                  asToolBtn
+                  onOpenTrigger={handleOpenLoadDialog}
+                />
 
                 <Divider />
 
-                {/* Export */}
                 <ToolBtn title="Export as JSON" onClick={handleExport}>
                   <Download size={15} />
                 </ToolBtn>
 
-                {/* Import */}
                 <ToolBtn title="Import from JSON" asLabel>
                   <Upload size={15} />
                   <input
@@ -389,7 +577,6 @@ export function FlowControls() {
 
                 <Divider />
 
-                {/* Schedule */}
                 <ToolBtn
                   title="Schedule Flow"
                   onClick={() => setScheduleOpen((v) => !v)}
@@ -397,8 +584,6 @@ export function FlowControls() {
                 >
                   <Clock size={15} />
                 </ToolBtn>
-
-                {/* History */}
                 <ToolBtn
                   title="Execution History"
                   onClick={() => setHistoryOpen((v) => !v)}
@@ -409,7 +594,6 @@ export function FlowControls() {
 
                 <Divider />
 
-                {/* Wallet — show address + multi-wallet count if connected */}
                 {isConnected && walletAddress ? (
                   <div
                     style={{
@@ -446,7 +630,6 @@ export function FlowControls() {
                     >
                       {truncateAddress(walletAddress)}
                     </span>
-                    {/* Badge when multiple wallets */}
                     {wallets.length > 1 && (
                       <span
                         style={{
@@ -475,7 +658,6 @@ export function FlowControls() {
 
                 <Divider />
 
-                {/* Run */}
                 <ToolBtn
                   title={
                     nodes.length === 0
@@ -514,6 +696,216 @@ export function FlowControls() {
     </>
   );
 }
+
+// ── Mobile Button ──────────────────────────────────────────────────────────────
+
+function MobileBtn({
+  icon,
+  label,
+  onClick,
+  active,
+  green,
+  asLabel,
+  onImport,
+  onClose,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick?: () => void;
+  active?: boolean;
+  green?: boolean;
+  asLabel?: boolean;
+  onImport?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClose?: () => void;
+}) {
+  const style: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    height: 64,
+    borderRadius: 12,
+    border: `1px solid ${active && green ? "rgba(34,197,94,0.3)" : active ? "rgba(56,189,248,0.3)" : "rgba(56,189,248,0.1)"}`,
+    background:
+      active && green
+        ? "rgba(34,197,94,0.1)"
+        : active
+          ? "rgba(56,189,248,0.12)"
+          : "rgba(20,28,48,0.6)",
+    color:
+      active && green
+        ? "#22c55e"
+        : active
+          ? "rgb(56,189,248)"
+          : "rgba(148,163,184,0.8)",
+    cursor: "pointer",
+    fontSize: 9,
+    fontWeight: 600,
+    letterSpacing: "0.05em",
+    textTransform: "uppercase",
+  };
+
+  if (asLabel) {
+    return (
+      <label style={{ ...style, cursor: "pointer" }}>
+        {icon}
+        <span>{label}</span>
+        <input
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={(e) => {
+            onImport?.(e);
+            onClose?.();
+          }}
+        />
+      </label>
+    );
+  }
+
+  return (
+    <button onClick={onClick} style={style}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+// ── Shared Dialogs ─────────────────────────────────────────────────────────────
+
+function SaveDialog({
+  open,
+  onOpenChange,
+  flowName,
+  setFlowName,
+  flowDescription,
+  setFlowDescription,
+  onSave,
+  asToolBtn,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  flowName: string;
+  setFlowName: (v: string) => void;
+  flowDescription: string;
+  setFlowDescription: (v: string) => void;
+  onSave: () => void;
+  asToolBtn?: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {asToolBtn && (
+        <DialogTrigger asChild>
+          <ToolBtn title="Save Flow">
+            <Save size={15} />
+          </ToolBtn>
+        </DialogTrigger>
+      )}
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Save Flow</DialogTitle>
+          <DialogDescription>Save your flow to load it later</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Flow Name</Label>
+            <Input
+              value={flowName}
+              onChange={(e) => setFlowName(e.target.value)}
+              placeholder="LayerZero Farmer"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Input
+              value={flowDescription}
+              onChange={(e) => setFlowDescription(e.target.value)}
+              placeholder="Daily farming across 20 wallets"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={onSave}>Save Flow</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function LoadDialog({
+  open,
+  onOpenChange,
+  savedFlows,
+  onLoad,
+  onDelete,
+  asToolBtn,
+  onOpenTrigger,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  savedFlows: SavedFlow[];
+  onLoad: (id: string) => void;
+  onDelete: (id: string) => void;
+  asToolBtn?: boolean;
+  onOpenTrigger?: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {asToolBtn && (
+        <DialogTrigger asChild>
+          <ToolBtn title="Load Flow" onClick={onOpenTrigger}>
+            <FolderOpen size={15} />
+          </ToolBtn>
+        </DialogTrigger>
+      )}
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Load Flow</DialogTitle>
+          <DialogDescription>Select a saved flow to load</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {savedFlows.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No saved flows yet.
+            </p>
+          ) : (
+            savedFlows.map((flow) => (
+              <Card key={flow.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold truncate">{flow.name}</h4>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {flow.description}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {flow.nodes.length} nodes · Updated{" "}
+                      {new Date(flow.updatedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button size="sm" onClick={() => onLoad(flow.id)}>
+                      Load
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onDelete(flow.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Desktop ToolBtn ────────────────────────────────────────────────────────────
 
 function Divider() {
   return (
