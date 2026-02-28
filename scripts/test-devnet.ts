@@ -29,9 +29,9 @@ async function main() {
     },
   };
 
-  const executor = new SwapExecutor(mockSwapNode as any, privateKey, true);
+  const executor = new SwapExecutor(mockSwapNode as any, privateKey, "devnet");
 
-  const balance = await executor.getDevnetBalance();
+  const balance = await executor.getBalance();
   console.log(`💰 Balance: ${balance} SOL`);
 
   if (balance < 0.05) {
