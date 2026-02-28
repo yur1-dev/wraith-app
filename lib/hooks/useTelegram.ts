@@ -20,7 +20,7 @@ interface TelegramStore {
 
   checkConnection: () => Promise<void>;
   openBot: () => Promise<void>;
-  disconnect: () => void;
+  disconnect: () => Promise<void>;
 }
 
 export const useTelegram = create<TelegramStore>()(
@@ -60,8 +60,6 @@ export const useTelegram = create<TelegramStore>()(
           return;
         }
 
-        // Use XMLHttpRequest — browser extensions interfere with fetch
-        // but XHR responses are more reliably readable
         const botUrl = await new Promise<string>((resolve) => {
           const xhr = new XMLHttpRequest();
           xhr.open("POST", "/api/telegram/connect");
@@ -70,30 +68,20 @@ export const useTelegram = create<TelegramStore>()(
           xhr.onload = () => {
             try {
               const data = JSON.parse(xhr.responseText);
-              console.log("[Telegram] connect response:", data);
               if (data.botUrl && !data.botUrl.includes("undefined")) {
                 resolve(data.botUrl);
               } else {
-                console.warn("[Telegram] botUrl missing or undefined:", data);
                 resolve("https://t.me/wraithopxzbot");
               }
-            } catch (e) {
-              console.error("[Telegram] parse error:", e, xhr.responseText);
+            } catch {
               resolve("https://t.me/wraithopxzbot");
             }
           };
-          xhr.onerror = () => {
-            console.error("[Telegram] XHR error");
-            resolve("https://t.me/wraithopxzbot");
-          };
-          xhr.ontimeout = () => {
-            console.error("[Telegram] XHR timeout");
-            resolve("https://t.me/wraithopxzbot");
-          };
+          xhr.onerror = () => resolve("https://t.me/wraithopxzbot");
+          xhr.ontimeout = () => resolve("https://t.me/wraithopxzbot");
           xhr.send(JSON.stringify({ wallet }));
         });
 
-        console.log("[Telegram] opening:", botUrl);
         window.open(botUrl, "_blank");
 
         // Poll every 3s for up to 2 minutes until connected
@@ -108,8 +96,27 @@ export const useTelegram = create<TelegramStore>()(
         }, 3000);
       },
 
-      disconnect: () => {
+      /**
+       * Disconnect — clears both local state AND the server-side mapping.
+       * This means the bot will also lose the link (no more alerts).
+       */
+      disconnect: async () => {
         stopPolling();
+        const wallet = useWallet.getState().walletAddress();
+
+        // Clear server mapping
+        if (wallet) {
+          try {
+            await fetch("/api/telegram/disconnect", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ wallet }),
+            });
+          } catch {
+            // ignore — local state cleared regardless
+          }
+        }
+
         set({ chatId: null, isConnected: false });
       },
     }),

@@ -62,10 +62,13 @@ const EVM_TOKENS: Record<string, Record<string, string>> = {
   },
 };
 
-// EVM chains where a given token actually exists — used for cross-chain validation
 const EVM_CHAINS = new Set(Object.keys(EVM_TOKENS));
 
-// ── Token validators ──────────────────────────────────────────────────────────
+// DEXes that belong to each ecosystem
+// NOTE: uniswap is EVM-only. When chain=solana and dex=uniswap, we silently
+// remap to "auto" (Jupiter) instead of returning a 400 — the UI might just
+// have a stale default value.
+const EVM_ONLY_DEXES = new Set(["uniswap", "1inch", "paraswap"]);
 
 function isSolanaToken(token: string): boolean {
   return token.toUpperCase() in SOLANA_TOKENS;
@@ -77,7 +80,7 @@ function isEvmToken(chain: string, token: string): boolean {
   return token.toUpperCase() in chainTokens;
 }
 
-// ── Jupiter (Solana) ─────────────────────────────────────────────────────────
+// ── CoinGecko fallback ────────────────────────────────────────────────────────
 
 const COINGECKO_IDS: Record<string, string> = {
   SOL: "solana",
@@ -120,6 +123,8 @@ async function fetchCoinGeckoPrices(
   }
 }
 
+// ── Jupiter (Solana) ─────────────────────────────────────────────────────────
+
 async function fetchJupiterQuote(
   fromToken: string,
   toToken: string,
@@ -131,12 +136,7 @@ async function fetchJupiterQuote(
   const inputMint = SOLANA_TOKENS[fromUpper];
   const outputMint = SOLANA_TOKENS[toUpper];
 
-  // FIX: Return structured error instead of null so caller can distinguish
-  // "unsupported token" from "API failure"
   if (!inputMint || !outputMint) {
-    console.error(
-      `[swap-quote] Unknown Solana token: ${fromToken} or ${toToken}`,
-    );
     return {
       _error: "unsupported_token",
       message: `Token(s) not supported on Solana: ${!inputMint ? fromToken : ""}${!inputMint && !outputMint ? ", " : ""}${!outputMint ? toToken : ""}. Available: ${Object.keys(SOLANA_TOKENS).join(", ")}`,
@@ -290,16 +290,15 @@ async function fetch1inchQuote(
 
     const outDec = decimals[toToken] ?? 18;
     const outAmount = parseInt(data.dstAmount ?? "0") / Math.pow(10, outDec);
-    const inAmount = amount;
 
     return {
       dex: "1inch",
       chain,
       fromToken,
       toToken,
-      inAmount,
+      inAmount: amount,
       outAmount,
-      rate: outAmount / inAmount,
+      rate: outAmount / amount,
       priceImpact: null,
       slippage,
       minReceived: outAmount * (1 - slippage / 100),
@@ -391,31 +390,24 @@ export async function GET(req: Request) {
     const amount = parseFloat(url.searchParams.get("amount") ?? "1");
     const slippage = parseFloat(url.searchParams.get("slippage") ?? "0.5");
     const chain = (url.searchParams.get("chain") ?? "solana").toLowerCase();
-    // FIX: normalize dex param — uniswap is an EVM dex, not valid on Solana;
-    // treat it as "auto" so we fall through to 1inch/Paraswap on EVM chains.
     const dexRaw = (url.searchParams.get("dex") ?? "auto").toLowerCase();
-    const SOLANA_DEXES = new Set(["jupiter", "orca", "raydium", "auto"]);
-    const EVM_DEXES = new Set(["1inch", "paraswap", "uniswap", "auto"]);
-    const dex = dexRaw; // kept for logging; routing logic uses sets above
+
+    // ✅ FIX: If an EVM-only dex (uniswap, 1inch) is sent with chain=solana,
+    // silently remap to "auto" instead of returning a 400. The SwapNode UI
+    // defaults to uniswap which causes the 400 spam in your terminal.
+    const effectiveDex =
+      chain === "solana" && EVM_ONLY_DEXES.has(dexRaw) ? "auto" : dexRaw;
 
     if (isNaN(amount) || amount <= 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
-    // FIX: Validate token/chain compatibility before attempting any fetch
+    // Token/chain validation
     if (chain === "solana") {
-      if (!SOLANA_DEXES.has(dexRaw) && dexRaw !== "uniswap") {
-        return NextResponse.json(
-          {
-            error: `DEX "${dex}" is not supported on Solana. Use: jupiter, orca, raydium, or auto`,
-          },
-          { status: 400 },
-        );
-      }
       if (!isSolanaToken(fromToken)) {
         return NextResponse.json(
           {
-            error: `"${fromToken}" is not a Solana token. Did you mean to use chain=ethereum or chain=arbitrum?`,
+            error: `"${fromToken}" is not a Solana token. Use chain=ethereum or chain=arbitrum for EVM tokens.`,
             supportedTokens: Object.keys(SOLANA_TOKENS),
           },
           { status: 400 },
@@ -424,21 +416,13 @@ export async function GET(req: Request) {
       if (!isSolanaToken(toToken)) {
         return NextResponse.json(
           {
-            error: `"${toToken}" is not a Solana token. Did you mean to use chain=ethereum or chain=arbitrum?`,
+            error: `"${toToken}" is not a Solana token. Use chain=ethereum or chain=arbitrum for EVM tokens.`,
             supportedTokens: Object.keys(SOLANA_TOKENS),
           },
           { status: 400 },
         );
       }
     } else if (EVM_CHAINS.has(chain)) {
-      if (!EVM_DEXES.has(dexRaw)) {
-        return NextResponse.json(
-          {
-            error: `DEX "${dex}" is not supported on ${chain}. Use: 1inch, paraswap, uniswap, or auto`,
-          },
-          { status: 400 },
-        );
-      }
       if (!isEvmToken(chain, fromToken)) {
         return NextResponse.json(
           {
@@ -466,7 +450,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const cacheKey = `${chain}-${fromToken}-${toToken}-${amount}-${slippage}-${dex}`;
+    const cacheKey = `${chain}-${fromToken}-${toToken}-${amount}-${slippage}-${effectiveDex}`;
     const hit = getCache(cacheKey);
     if (hit) {
       return NextResponse.json({ ...(hit as object), cached: true });
@@ -475,24 +459,25 @@ export async function GET(req: Request) {
     let quote = null;
 
     if (chain === "solana") {
-      // All Solana DEX options (Jupiter, Orca, Raydium) route through Jupiter aggregator
+      // All Solana requests → Jupiter (regardless of dex param)
       const result = await fetchJupiterQuote(
         fromToken,
         toToken,
         amount,
         slippage,
       );
-      // FIX: handle structured error object returned from fetchJupiterQuote
       if (result && "_error" in result) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
       quote = result;
     } else {
-      // EVM chains: try 1inch first (uniswap is treated as auto/1inch),
-      // then fall back to Paraswap
+      // EVM: try 1inch first, fall back to Paraswap
       const use1inch =
-        dexRaw === "auto" || dexRaw === "1inch" || dexRaw === "uniswap";
-      const useParaswap = dexRaw === "auto" || dexRaw === "paraswap";
+        effectiveDex === "auto" ||
+        effectiveDex === "1inch" ||
+        effectiveDex === "uniswap";
+      const useParaswap =
+        effectiveDex === "auto" || effectiveDex === "paraswap";
 
       if (use1inch) {
         quote = await fetch1inchQuote(
@@ -517,7 +502,7 @@ export async function GET(req: Request) {
     if (!quote) {
       return NextResponse.json(
         {
-          error: `No quote available for ${fromToken} → ${toToken} on ${chain}. The DEX APIs may be temporarily unavailable.`,
+          error: `No quote available for ${fromToken} → ${toToken} on ${chain}. DEX APIs may be temporarily unavailable.`,
         },
         { status: 502 },
       );

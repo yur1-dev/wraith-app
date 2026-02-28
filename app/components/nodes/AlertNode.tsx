@@ -14,6 +14,10 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
+  LogOut,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
 import { useTelegram } from "@/lib/hooks/useTelegram";
@@ -61,7 +65,11 @@ const PRESET_COLORS = [
 
 export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
-  const { isConnected: tgConnected, openBot } = useTelegram();
+  const {
+    isConnected: tgConnected,
+    openBot,
+    disconnect: tgDisconnect,
+  } = useTelegram();
 
   const alertType = (data.alertType as AlertChannel) ?? "Telegram";
   const severity = (data.severity as Severity) ?? "info";
@@ -79,9 +87,13 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
   const [showMenu, setShowMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<"color" | "settings">("color");
   const [pulsing, setPulsing] = useState(false);
+  const [editingMessage, setEditingMessage] = useState(false);
+  const [draftMessage, setDraftMessage] = useState(message);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const popoverRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!showMenu) return;
@@ -97,8 +109,15 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
     window.addEventListener("mousedown", handleClick, true);
     return () => window.removeEventListener("mousedown", handleClick, true);
   }, [showMenu]);
-  const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => {
+    if (editingMessage && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.select();
+    }
+  }, [editingMessage]);
+
+  const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (sev.pulse && selected) {
       pulseRef.current = setInterval(() => setPulsing((p) => !p), 800);
@@ -114,6 +133,22 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
   const update = (patch: Record<string, unknown>) => updateNodeData(id, patch);
 
   const isReady = alertType === "Telegram" ? tgConnected : message.length > 0;
+
+  const handleSaveMessage = () => {
+    if (draftMessage.trim()) update({ message: draftMessage.trim() });
+    setEditingMessage(false);
+  };
+
+  const handleCancelMessage = () => {
+    setDraftMessage(message);
+    setEditingMessage(false);
+  };
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    await tgDisconnect();
+    setDisconnecting(false);
+  };
 
   return (
     <div
@@ -235,8 +270,8 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
                         <button
                           key={s}
                           onClick={() => update({ severity: s })}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[9px] font-mono
-                            font-bold uppercase tracking-wider cursor-pointer transition-all`}
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[9px] font-mono
+                            font-bold uppercase tracking-wider cursor-pointer transition-all"
                           style={
                             severity === s
                               ? {
@@ -403,7 +438,7 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
               border: `1px solid ${tgConnected ? "rgba(34,197,94,0.2)" : "rgba(34,158,217,0.2)"}`,
             }}
           >
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
               <div
                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                 style={{
@@ -412,13 +447,34 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
                 }}
               />
               <span
-                className="text-[9px] font-mono"
+                className="text-[9px] font-mono truncate"
                 style={{ color: tgConnected ? "#22c55e" : "#229ed9" }}
               >
                 {tgConnected ? "Bot connected" : "Not connected"}
               </span>
             </div>
-            {!tgConnected && (
+
+            {tgConnected ? (
+              /* ── Disconnect button ── */
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                className="flex items-center gap-1 text-[8px] font-mono font-bold uppercase tracking-widest
+                  text-rose-400 hover:text-rose-300 disabled:opacity-40 transition-colors cursor-pointer
+                  border border-rose-500/20 hover:border-rose-400/40 rounded px-1.5 py-0.5"
+                title="Disconnect Telegram bot"
+              >
+                {disconnecting ? (
+                  <span className="animate-pulse">···</span>
+                ) : (
+                  <>
+                    <LogOut className="w-2.5 h-2.5" />
+                    Disconnect
+                  </>
+                )}
+              </button>
+            ) : (
+              /* ── Connect button ── */
               <button
                 onClick={openBot}
                 className="flex items-center gap-1 text-[8px] font-mono font-bold uppercase tracking-widest
@@ -430,17 +486,77 @@ export const AlertNode = memo(({ data, selected, id }: NodeProps) => {
           </div>
         )}
 
-        {/* Message preview */}
+        {/* Message preview / editor */}
         <div
-          className="rounded-lg px-2.5 py-2 text-[10px] text-slate-300 leading-relaxed font-mono line-clamp-3"
+          className="rounded-lg px-2.5 py-2 group relative"
           style={{
             background: `${accent}08`,
             border: `1px solid ${accent}18`,
           }}
         >
-          <span className="text-slate-500">"</span>
-          {message}
-          <span className="text-slate-500">"</span>
+          {editingMessage ? (
+            <div className="flex flex-col gap-1.5">
+              <textarea
+                ref={textareaRef}
+                value={draftMessage}
+                onChange={(e) => setDraftMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSaveMessage();
+                  }
+                  if (e.key === "Escape") handleCancelMessage();
+                }}
+                rows={3}
+                className="w-full bg-transparent text-[10px] text-slate-200 font-mono leading-relaxed
+                  resize-none focus:outline-none placeholder-slate-600"
+                placeholder="Your alert message…"
+              />
+              <div className="flex items-center justify-end gap-1">
+                <button
+                  onClick={handleCancelMessage}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-mono
+                    text-slate-500 hover:text-slate-300 border border-slate-700 hover:border-slate-500
+                    transition-all cursor-pointer"
+                >
+                  <X className="w-2.5 h-2.5" /> Cancel
+                </button>
+                <button
+                  onClick={handleSaveMessage}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-mono
+                    font-bold transition-all cursor-pointer"
+                  style={{
+                    color: accent,
+                    background: `${accent}18`,
+                    border: `1px solid ${accent}44`,
+                  }}
+                >
+                  <Check className="w-2.5 h-2.5" /> Save
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-[10px] text-slate-300 leading-relaxed font-mono line-clamp-3 pr-5">
+                <span className="text-slate-500">"</span>
+                {message}
+                <span className="text-slate-500">"</span>
+              </p>
+              {/* Edit pencil — appears on hover */}
+              <button
+                onClick={() => {
+                  setDraftMessage(message);
+                  setEditingMessage(true);
+                }}
+                className="absolute top-1.5 right-1.5 w-5 h-5 rounded flex items-center justify-center
+                  opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer
+                  bg-white/5 hover:bg-white/10 border border-white/10"
+                title="Edit message"
+              >
+                <Pencil className="w-2.5 h-2.5 text-slate-400" />
+              </button>
+            </>
+          )}
         </div>
 
         {/* Footer */}

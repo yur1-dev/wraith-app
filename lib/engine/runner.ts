@@ -1,6 +1,7 @@
 import type { Node, Edge } from "@xyflow/react";
 import { FlowParser } from "./parser";
 import { SwapExecutor } from "../executors/swap";
+import { EvmSwapExecutor } from "../executors/swap-evm";
 import { WaitExecutor } from "../executors/wait";
 import type { WalletEntry } from "@/app/components/nodes/MultiWalletNode";
 
@@ -12,6 +13,14 @@ export interface ExecutionResult {
   signature?: string;
 }
 
+const EVM_CHAINS = new Set([
+  "ethereum",
+  "arbitrum",
+  "base",
+  "optimism",
+  "polygon",
+]);
+
 export class FlowRunner {
   private parser: FlowParser;
   private context: Record<string, any> = {};
@@ -19,7 +28,7 @@ export class FlowRunner {
   constructor(
     private nodes: Node[],
     private edges: Edge[],
-    private walletPrivateKey: string, // default wallet key (from WalletConnectNode or passed in)
+    private walletPrivateKey: string,
   ) {
     this.parser = new FlowParser(nodes, edges);
   }
@@ -32,7 +41,6 @@ export class FlowRunner {
       const node = this.parser.getNode(nodeId);
       if (!node) continue;
 
-      // If this is a multiWallet node, run the downstream flow per wallet
       if (node.type === "multiWallet") {
         const multiResults = await this.executeMultiWallet(
           node,
@@ -40,7 +48,6 @@ export class FlowRunner {
           nodeId,
         );
         results.push(...multiResults);
-        // Stop processing — multiWallet handles its own downstream execution
         break;
       }
 
@@ -55,7 +62,6 @@ export class FlowRunner {
     return results;
   }
 
-  // Execute all downstream nodes for each wallet in the MultiWalletNode
   private async executeMultiWallet(
     multiNode: Node,
     fullOrder: string[],
@@ -68,7 +74,6 @@ export class FlowRunner {
       multiNode.data.executeSequentially ?? true,
     );
 
-    // Only process enabled wallets that have a private key
     const executableWallets = wallets.filter((w) => w.enabled && w.privateKey);
 
     if (executableWallets.length === 0) {
@@ -82,7 +87,6 @@ export class FlowRunner {
       ];
     }
 
-    // Get all nodes that come after the multiWallet node in execution order
     const multiNodeIndex = fullOrder.indexOf(multiNodeId);
     const downstreamNodeIds = fullOrder.slice(multiNodeIndex + 1);
 
@@ -101,7 +105,6 @@ export class FlowRunner {
           wallet.privateKey,
           wallet.address,
         );
-        // Tag result with wallet info
         result.output = {
           ...result.output,
           wallet: wallet.address,
@@ -117,13 +120,11 @@ export class FlowRunner {
     };
 
     if (executeSequentially) {
-      // Run wallets one after another
       for (const wallet of executableWallets) {
         const results = await runForWallet(wallet);
         allResults.push(...results);
       }
     } else {
-      // Run all wallets in parallel
       const parallelResults = await Promise.all(
         executableWallets.map((wallet) => runForWallet(wallet)),
       );
@@ -142,15 +143,26 @@ export class FlowRunner {
       let output: any;
 
       switch (node.type) {
-        case "swap":
-          const swapExecutor = new SwapExecutor(node, privateKey);
-          output = await swapExecutor.execute(this.context);
-          break;
+        case "swap": {
+          const chain = String(node.data.chain ?? "solana").toLowerCase();
 
-        case "waitDelay":
+          if (EVM_CHAINS.has(chain)) {
+            // ✅ EVM chain (Arbitrum, Ethereum, Base, etc.) → use EVM executor
+            const evmExecutor = new EvmSwapExecutor(node, privateKey);
+            output = await evmExecutor.execute();
+          } else {
+            // Solana → use Jupiter executor
+            const swapExecutor = new SwapExecutor(node, privateKey);
+            output = await swapExecutor.execute();
+          }
+          break;
+        }
+
+        case "waitDelay": {
           const waitExecutor = new WaitExecutor(node);
           output = await waitExecutor.execute(this.context);
           break;
+        }
 
         default:
           output = {

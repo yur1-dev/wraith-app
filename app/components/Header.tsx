@@ -12,6 +12,8 @@ import {
   LayoutTemplate,
   Menu,
   X,
+  FlaskConical,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,10 +27,138 @@ import { useWallet } from "@/lib/hooks/useWallet";
 import { WalletConnectModal } from "./WalletConnectModal";
 import { TemplatesGallery } from "./TemplatesGallery";
 import { FlowPersistence } from "./FlowPersistence";
+import { useNetworkStore } from "@/lib/network/solana.config";
 
 interface HeaderProps {
   onTemplateLoad?: () => void;
 }
+
+// ── Network Toggle Button ──────────────────────────────────────────────────────
+
+function NetworkToggle() {
+  const { network, toggle } = useNetworkStore();
+  const [mounted, setMounted] = useState(false);
+  const [animating, setAnimating] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) return null;
+
+  const isDevnet = network === "devnet";
+  const color = isDevnet ? "#facc15" : "#22c55e";
+  const bg = isDevnet ? "rgba(250,204,21,0.08)" : "rgba(34,197,94,0.08)";
+  const bdr = isDevnet ? "rgba(250,204,21,0.3)" : "rgba(34,197,94,0.3)";
+
+  const handleToggle = () => {
+    setAnimating(true);
+    toggle();
+    setTimeout(() => setAnimating(false), 400);
+  };
+
+  return (
+    <button
+      onClick={handleToggle}
+      title={isDevnet ? "Switch to Mainnet" : "Switch to Devnet"}
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        height: 32,
+        padding: "0 10px",
+        borderRadius: 8,
+        fontSize: 11,
+        fontFamily: "monospace",
+        fontWeight: 700,
+        letterSpacing: "0.05em",
+        background: bg,
+        border: `1px solid ${bdr}`,
+        color: color,
+        cursor: "pointer",
+        transition: "all 0.25s",
+        userSelect: "none",
+        overflow: "hidden",
+        WebkitTextFillColor: color,
+      }}
+    >
+      {/* Flash on switch */}
+      <span
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: 8,
+          background: color,
+          opacity: animating ? 0.12 : 0,
+          transition: "opacity 0.3s",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Icon */}
+      <span
+        style={{
+          position: "relative",
+          display: "flex",
+          flexShrink: 0,
+          transform: animating ? "rotate(180deg)" : "rotate(0deg)",
+          transition: "transform 0.3s",
+        }}
+      >
+        {isDevnet ? (
+          <FlaskConical size={12} color={color} />
+        ) : (
+          <Globe size={12} color={color} />
+        )}
+      </span>
+
+      {/* Label — always visible, no Tailwind breakpoint */}
+      <span
+        style={{
+          position: "relative",
+          color: color,
+          WebkitTextFillColor: color,
+        }}
+      >
+        {isDevnet ? "DEVNET" : "MAINNET"}
+      </span>
+
+      {/* Sliding pill */}
+      <span
+        style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          width: 28,
+          height: 16,
+          borderRadius: 9999,
+          background: isDevnet
+            ? "rgba(250,204,21,0.15)"
+            : "rgba(34,197,94,0.15)",
+          border: `1px solid ${bdr}`,
+          flexShrink: 0,
+          transition: "all 0.25s",
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: color,
+            left: isDevnet ? 3 : "auto",
+            right: isDevnet ? "auto" : 3,
+            boxShadow: `0 0 6px ${color}`,
+            transition: "all 0.25s",
+          }}
+        />
+      </span>
+    </button>
+  );
+}
+
+// ── Main Header ────────────────────────────────────────────────────────────────
 
 export function Header({ onTemplateLoad }: HeaderProps) {
   const walletAddress = useWallet((s) => s.walletAddress());
@@ -36,6 +166,7 @@ export function Header({ onTemplateLoad }: HeaderProps) {
   const isConnected = useWallet((s) => s.isConnected());
   const wallets = useWallet((s) => s.wallets);
   const disconnectAll = useWallet((s) => s.disconnectAll);
+  const network = useNetworkStore((s) => s.network);
 
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -63,8 +194,12 @@ export function Header({ onTemplateLoad }: HeaderProps) {
 
   const getExplorerUrl = () => {
     if (!walletAddress) return "#";
-    if (walletType === "phantom")
-      return `https://solscan.io/account/${walletAddress}`;
+    if (walletType === "phantom") {
+      // Use correct explorer based on current network
+      return network === "devnet"
+        ? `https://explorer.solana.com/address/${walletAddress}?cluster=devnet`
+        : `https://solscan.io/account/${walletAddress}`;
+    }
     return `https://etherscan.io/address/${walletAddress}`;
   };
 
@@ -117,7 +252,7 @@ export function Header({ onTemplateLoad }: HeaderProps) {
               style={{ background: "rgba(255,255,255,0.08)" }}
             />
 
-            {/* Templates — hidden on very small, shown sm+ */}
+            {/* Templates — hidden on small */}
             <button
               onClick={() => setTemplatesOpen(true)}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
@@ -146,7 +281,7 @@ export function Header({ onTemplateLoad }: HeaderProps) {
 
           {/* ── Right ── */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* FlowPersistence — hidden on small */}
+            {/* FlowPersistence — desktop only */}
             <div className="hidden sm:block">
               <FlowPersistence />
             </div>
@@ -156,7 +291,15 @@ export function Header({ onTemplateLoad }: HeaderProps) {
               style={{ background: "rgba(255,255,255,0.08)" }}
             />
 
-            {/* Wallet — desktop full, mobile compact */}
+            {/* ── NETWORK TOGGLE ── */}
+            <NetworkToggle />
+
+            <div
+              className="h-5 w-px hidden sm:block"
+              style={{ background: "rgba(255,255,255,0.08)" }}
+            />
+
+            {/* Wallet */}
             {mounted && isConnected && walletAddress ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -324,12 +467,11 @@ export function Header({ onTemplateLoad }: HeaderProps) {
                 }}
               >
                 <Wallet className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5" />
-                <span className="hidden xs:inline">Connect</span>
-                <span className="xs:hidden">Connect</span>
+                Connect
               </Button>
             )}
 
-            {/* Mobile hamburger — shows Templates + FlowPersistence */}
+            {/* Mobile hamburger */}
             <button
               onClick={() => setMobileMenuOpen((v) => !v)}
               className="sm:hidden w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
@@ -346,7 +488,7 @@ export function Header({ onTemplateLoad }: HeaderProps) {
           </div>
         </div>
 
-        {/* Mobile dropdown menu */}
+        {/* Mobile dropdown */}
         {mobileMenuOpen && (
           <div
             className="sm:hidden px-3 pb-3 pt-2 flex flex-col gap-2"

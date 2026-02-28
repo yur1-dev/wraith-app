@@ -14,12 +14,35 @@ import {
   Wallet,
   Zap,
   Activity,
+  AlertTriangle,
 } from "lucide-react";
 import { useFlowStore } from "@/lib/hooks/useFlowStore";
 import { FeeConfirmStep } from "@/app/components/panels/FeeConfirmStep";
 import { useWallet } from "@/lib/hooks/useWallet";
-import { Connection, VersionedTransaction, PublicKey } from "@solana/web3.js";
+import {
+  Connection,
+  Keypair,
+  VersionedTransaction,
+  Transaction,
+  PublicKey,
+} from "@solana/web3.js";
+import {
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
+import bs58 from "bs58";
 import type { Node } from "@xyflow/react";
+import {
+  getNetwork,
+  getNetworkDisplay,
+  getExplorerTxUrl,
+  getTokenAddress,
+  getPrimaryRpc,
+  isDevnet,
+} from "@/lib/network/solana.config";
+import { EvmSwapExecutor } from "@/lib/executors/swap-evm";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -42,16 +65,17 @@ interface RunFlowDialogProps {
   onClose: () => void;
 }
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// ── EVM chains set ─────────────────────────────────────────────────────────────
 
-const TOKEN_ADDRESSES: Record<string, string> = {
-  SOL: "So11111111111111111111111111111111111111112",
-  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
-  BONK: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-  JUP: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
-  RAY: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
-};
+const EVM_CHAINS = new Set([
+  "ethereum",
+  "arbitrum",
+  "base",
+  "optimism",
+  "polygon",
+]);
+
+// ── Node metadata ──────────────────────────────────────────────────────────────
 
 const NODE_META: Record<
   string,
@@ -77,9 +101,216 @@ const NODE_META: Record<
   gasOptimizer: { label: "Gas Optimizer", emoji: "⛽", color: "#84cc16" },
 };
 
-// ── Jupiter swap ───────────────────────────────────────────────────────────────
+// ── Network Mode Banner ────────────────────────────────────────────────────────
 
-async function executeJupiterSwap(
+function NetworkModeBanner() {
+  const network = getNetwork();
+  const display = getNetworkDisplay(network);
+
+  return (
+    <div
+      className="flex items-center justify-center gap-2 px-4 py-1.5 text-[11px] font-mono font-bold tracking-widest"
+      style={{
+        background: display.bgColor,
+        borderBottom: `1px solid ${display.borderColor}`,
+        color: display.color,
+      }}
+    >
+      {network === "devnet" && <AlertTriangle size={10} />}
+      {display.label}
+      {network === "devnet" && (
+        <span
+          style={{
+            color: "rgba(250,204,21,0.5)",
+            fontWeight: 400,
+            letterSpacing: "0.05em",
+          }}
+        >
+          · No real funds · Safe to test
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── Solana server-side swap (private key, no Phantom popup) ───────────────────
+
+async function executeSolanaSwapWithKey(
+  node: Node,
+  privateKey: string,
+  proxyBase: string,
+): Promise<{
+  success: boolean;
+  signature?: string;
+  explorerUrl?: string;
+  error?: string;
+  output?: Record<string, unknown>;
+}> {
+  const network = getNetwork();
+  const connection = new Connection(getPrimaryRpc(network), "confirmed");
+
+  const { fromToken, toToken, amount, slippage } = node.data as {
+    fromToken?: string;
+    toToken?: string;
+    amount?: string | number;
+    slippage?: string | number;
+  };
+
+  // Decode the private key — supports both base58 (Solana standard) and
+  // raw Uint8Array JSON (some wallets export as [1,2,3,...])
+  let wallet: Keypair;
+  try {
+    const trimmed = privateKey.trim();
+    if (trimmed.startsWith("[")) {
+      // JSON array format: [1,2,3,...]
+      wallet = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(trimmed)));
+    } else {
+      // Base58 format (standard Phantom export)
+      wallet = Keypair.fromSecretKey(bs58.decode(trimmed));
+    }
+  } catch {
+    return {
+      success: false,
+      error:
+        "Invalid private key format. Export your Solana private key as Base58 from Phantom: Settings → Security → Export Private Key.",
+    };
+  }
+
+  const inputMint = getTokenAddress(
+    (fromToken || "SOL").toUpperCase(),
+    network,
+  );
+  const outputMint = getTokenAddress(
+    (toToken || "USDC").toUpperCase(),
+    network,
+  );
+
+  const decimals = (fromToken || "SOL").toUpperCase() === "USDC" ? 6 : 9;
+  const amountLamports = Math.floor(
+    parseFloat(String(amount || "0.01")) * Math.pow(10, decimals),
+  );
+  const slippageBps = Math.floor(parseFloat(String(slippage || "1")) * 100);
+
+  // Pre-create ATA for output token if it doesn't exist yet
+  const isOutputSol =
+    outputMint === "So11111111111111111111111111111111111111112";
+  if (!isOutputSol) {
+    try {
+      const mintPubkey = new PublicKey(outputMint);
+      const ata = await getAssociatedTokenAddress(
+        mintPubkey,
+        wallet.publicKey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      );
+      const ataInfo = await connection.getAccountInfo(ata);
+      if (ataInfo === null) {
+        const createAtaIx = createAssociatedTokenAccountInstruction(
+          wallet.publicKey,
+          ata,
+          wallet.publicKey,
+          mintPubkey,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID,
+        );
+        const { blockhash, lastValidBlockHeight } =
+          await connection.getLatestBlockhash("confirmed");
+        const tx = new Transaction({
+          feePayer: wallet.publicKey,
+          blockhash,
+          lastValidBlockHeight,
+        }).add(createAtaIx);
+        tx.sign(wallet);
+        const ataSig = await connection.sendRawTransaction(tx.serialize(), {
+          skipPreflight: false,
+        });
+        await connection.confirmTransaction(
+          { signature: ataSig, blockhash, lastValidBlockHeight },
+          "confirmed",
+        );
+        console.log(`✅ ATA created: ${ata.toString()}`);
+      }
+    } catch (ataErr) {
+      console.warn("ATA pre-creation warning (non-fatal):", ataErr);
+    }
+  }
+
+  // Get Jupiter quote
+  const quoteParams = new URLSearchParams({
+    inputMint,
+    outputMint,
+    amount: String(amountLamports),
+    slippageBps: String(slippageBps),
+  });
+
+  const quoteRes = await fetch(`${proxyBase}/api/jupiter/quote?${quoteParams}`);
+  if (!quoteRes.ok) throw new Error(`Quote failed: ${await quoteRes.text()}`);
+  const quote = await quoteRes.json();
+  if (quote.error) throw new Error(`Jupiter quote error: ${quote.error}`);
+
+  // Get swap transaction from Jupiter
+  const swapRes = await fetch(`${proxyBase}/api/jupiter/swap`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      quoteResponse: quote,
+      userPublicKey: wallet.publicKey.toString(),
+      wrapAndUnwrapSol: true,
+    }),
+  });
+  if (!swapRes.ok) throw new Error(`Swap tx failed: ${await swapRes.text()}`);
+  const swapData = await swapRes.json();
+  if (swapData.error) throw new Error(`Jupiter swap error: ${swapData.error}`);
+
+  // Sign with private key and send — no wallet popup needed
+  const swapTransactionBuf = Buffer.from(swapData.swapTransaction, "base64");
+  const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+  transaction.sign([wallet]);
+
+  const signature = await connection.sendTransaction(transaction, {
+    skipPreflight: false,
+    maxRetries: 3,
+  });
+
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash("confirmed");
+  const confirmation = await connection.confirmTransaction(
+    { signature, blockhash, lastValidBlockHeight },
+    "confirmed",
+  );
+
+  if (confirmation.value.err) {
+    throw new Error(
+      `Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
+    );
+  }
+
+  const explorerUrl = getExplorerTxUrl(signature, network);
+  const outDecimals = (toToken || "USDC").toUpperCase() === "SOL" ? 9 : 6;
+
+  return {
+    success: true,
+    signature,
+    explorerUrl,
+    output: {
+      fromToken: fromToken || "SOL",
+      toToken: toToken || "USDC",
+      amountIn: amount,
+      amountOut: (
+        parseInt(quote.outAmount) / Math.pow(10, outDecimals)
+      ).toFixed(4),
+      wallet: wallet.publicKey.toString(),
+      dex: "Jupiter",
+      network,
+      explorerUrl,
+    },
+  };
+}
+
+// ── Phantom browser wallet swap (fallback if no private key) ──────────────────
+
+async function executeSolanaSwapWithPhantom(
   node: Node,
   walletAddress: string,
   proxyBase: string,
@@ -90,6 +321,8 @@ async function executeJupiterSwap(
   error?: string;
   output?: Record<string, unknown>;
 }> {
+  const network = getNetwork();
+
   const { fromToken, toToken, amount, slippage } = node.data as {
     fromToken?: string;
     toToken?: string;
@@ -97,14 +330,15 @@ async function executeJupiterSwap(
     slippage?: string | number;
   };
 
-  const inputMint =
-    TOKEN_ADDRESSES[(fromToken || "SOL").toUpperCase()] ||
-    fromToken ||
-    TOKEN_ADDRESSES.SOL;
-  const outputMint =
-    TOKEN_ADDRESSES[(toToken || "USDC").toUpperCase()] ||
-    toToken ||
-    TOKEN_ADDRESSES.USDC;
+  const inputMint = getTokenAddress(
+    (fromToken || "SOL").toUpperCase(),
+    network,
+  );
+  const outputMint = getTokenAddress(
+    (toToken || "USDC").toUpperCase(),
+    network,
+  );
+
   const decimals = (fromToken || "SOL").toUpperCase() === "USDC" ? 6 : 9;
   const amountLamports = Math.floor(
     parseFloat(String(amount || "0.01")) * Math.pow(10, decimals),
@@ -117,6 +351,7 @@ async function executeJupiterSwap(
     amount: String(amountLamports),
     slippageBps: String(slippageBps),
   });
+
   const quoteRes = await fetch(`${proxyBase}/api/jupiter/quote?${quoteParams}`);
   if (!quoteRes.ok) throw new Error(`Quote failed: ${await quoteRes.text()}`);
   const quote = await quoteRes.json();
@@ -143,30 +378,32 @@ async function executeJupiterSwap(
 
   const { signature: signedTx } =
     await phantom.signAndSendTransaction(transaction);
-  const connection = new Connection(
-    "https://api.mainnet-beta.solana.com",
-    "confirmed",
-  );
+
+  const connection = new Connection(getPrimaryRpc(network), "confirmed");
   const confirmation = await connection.confirmTransaction(
     signedTx,
     "confirmed",
   );
-  if (confirmation.value.err)
+  if (confirmation.value.err) {
     throw new Error(
       `Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
     );
+  }
+
+  const explorerUrl = getExplorerTxUrl(signedTx, network);
 
   return {
     success: true,
     signature: signedTx,
-    explorerUrl: `https://solscan.io/tx/${signedTx}`,
+    explorerUrl,
     output: {
       fromToken: fromToken || "SOL",
       toToken: toToken || "USDC",
       amount,
       amountOut: (parseInt(quote.outAmount) / Math.pow(10, 6)).toFixed(4),
       dex: "Jupiter",
-      explorerUrl: `https://solscan.io/tx/${signedTx}`,
+      network,
+      explorerUrl,
     },
   };
 }
@@ -175,7 +412,9 @@ async function executeWaitDelay(
   node: Node,
 ): Promise<{ success: boolean; output?: Record<string, unknown> }> {
   const seconds = parseInt(
-    String(node.data?.seconds || node.data?.delay || "3"),
+    String(
+      node.data?.seconds || node.data?.delay || node.data?.duration || "3",
+    ),
   );
   await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   return { success: true, output: { waited: `${seconds}s` } };
@@ -220,9 +459,10 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
   useEffect(() => {
     if (phase === "running") {
       startTimeRef.current = Date.now();
-      timerRef.current = setInterval(() => {
-        setElapsedMs(Date.now() - startTimeRef.current);
-      }, 100);
+      timerRef.current = setInterval(
+        () => setElapsedMs(Date.now() - startTimeRef.current),
+        100,
+      );
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
@@ -247,8 +487,8 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
     setFeeSignature("dev-skip");
     startExecution();
   };
-  const handleFeePaid = (signature: string) => {
-    setFeeSignature(signature);
+  const handleFeePaid = (sig: string) => {
+    setFeeSignature(sig);
     startExecution();
   };
 
@@ -279,6 +519,65 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
     }));
     setNodeResults(initialResults);
 
+    // ── Find MultiWallet node ──────────────────────────────────────────────
+    const multiWalletNode =
+      ordered.find((n) => n.type === "multiWallet") ||
+      ordered.find((n) => n.type === "multi-wallet") ||
+      ordered.find((n) => n.type?.toLowerCase().includes("wallet")) ||
+      ordered.find((n) => Array.isArray(n.data?.wallets));
+
+    const mwWallets: any[] = Array.isArray(multiWalletNode?.data?.wallets)
+      ? (multiWalletNode!.data!.wallets as any[])
+      : [];
+
+    // ── Find best Solana wallet (private key, base58) ──────────────────────
+    const activeSolanaWallet =
+      mwWallets.find(
+        (w) => (w.chain === "solana" || !w.chain) && w.enabled && w.privateKey,
+      ) ||
+      mwWallets.find(
+        (w) => (w.chain === "solana" || !w.chain) && w.privateKey,
+      ) ||
+      mwWallets.find((w) => w.enabled && w.privateKey) ||
+      mwWallets.find((w) => w.privateKey);
+
+    // ── Find best EVM wallet ───────────────────────────────────────────────
+    const activeEvmWallet =
+      mwWallets.find(
+        (w) => w.chain && w.chain !== "solana" && w.enabled && w.privateKey,
+      ) ||
+      mwWallets.find((w) => w.chain && w.chain !== "solana" && w.privateKey) ||
+      mwWallets.find((w) => w.enabled && w.privateKey) ||
+      mwWallets.find((w) => w.privateKey);
+
+    console.log("🔍 All node types:", ordered.map((n) => n.type).join(", "));
+    console.log(
+      "🔍 MultiWallet node:",
+      multiWalletNode?.type,
+      multiWalletNode?.id,
+    );
+    console.log("🔍 Wallets in node:", mwWallets.length);
+    console.log(
+      "🔍 Active Solana wallet:",
+      activeSolanaWallet
+        ? {
+            address: activeSolanaWallet.address,
+            chain: activeSolanaWallet.chain,
+            hasKey: !!activeSolanaWallet.privateKey,
+          }
+        : "none",
+    );
+    console.log(
+      "🔍 Active EVM wallet:",
+      activeEvmWallet
+        ? {
+            address: activeEvmWallet.address,
+            chain: activeEvmWallet.chain,
+            hasKey: !!activeEvmWallet.privateKey,
+          }
+        : "none",
+    );
+
     let failed = false;
 
     for (const node of ordered) {
@@ -299,8 +598,56 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
           output?: Record<string, unknown>;
         };
 
-        if (node.type === "swap" && walletType === "phantom") {
-          result = await executeJupiterSwap(node, walletAddress!, proxyBase);
+        if (node.type === "swap") {
+          const chain = String(node.data.chain ?? "solana").toLowerCase();
+
+          if (EVM_CHAINS.has(chain)) {
+            // ── EVM swap ───────────────────────────────────────────────────
+            if (!activeEvmWallet?.privateKey) {
+              result = {
+                success: false,
+                error:
+                  "No EVM wallet found. In the Multi-Wallet node, add an Ethereum/Arbitrum wallet and enter its private key.",
+              };
+            } else {
+              const executor = new EvmSwapExecutor(
+                node,
+                activeEvmWallet.privateKey,
+              );
+              const out = await executor.execute();
+              result = {
+                success: out.success as boolean,
+                error: out.error as string | undefined,
+                signature: out.signature as string | undefined,
+                explorerUrl: out.explorerUrl as string | undefined,
+                output: out as Record<string, unknown>,
+              };
+            }
+          } else {
+            // ── Solana swap ────────────────────────────────────────────────
+            // Priority 1: private key from MultiWallet node (automated, no popup)
+            // Priority 2: connected Phantom browser wallet (manual fallback)
+            if (activeSolanaWallet?.privateKey) {
+              result = await executeSolanaSwapWithKey(
+                node,
+                activeSolanaWallet.privateKey,
+                proxyBase,
+              );
+            } else if (walletType === "phantom" && walletAddress) {
+              // Fallback: use connected Phantom wallet
+              result = await executeSolanaSwapWithPhantom(
+                node,
+                walletAddress,
+                proxyBase,
+              );
+            } else {
+              result = {
+                success: false,
+                error:
+                  "No Solana wallet found. Add a wallet in the Multi-Wallet node with your Solana private key (Base58 format from Phantom: Settings → Security → Export Private Key).",
+              };
+            }
+          }
         } else if (node.type === "waitDelay") {
           result = await executeWaitDelay(node);
         } else {
@@ -312,6 +659,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
               edges: [],
               walletAddress,
               walletType,
+              network: getNetwork(),
               allWallets: wallets.map((w) => ({
                 address: w.address,
                 type: w.type,
@@ -399,7 +747,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
           <div className="w-10 h-1 rounded-full bg-slate-700" />
         </div>
 
-        {/* Top accent */}
+        {/* Top accent line */}
         <div
           className="h-px w-full shrink-0"
           style={{
@@ -413,6 +761,8 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
                   : "linear-gradient(90deg, transparent, #22d3ee, #818cf8, transparent)",
           }}
         />
+
+        <NetworkModeBanner />
 
         {/* Header */}
         <div
@@ -462,7 +812,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
               )}
               {phase === "done" && (
                 <p className="text-[10px] text-slate-500 font-mono">
-                  {successCount}/{totalCount} nodes • {formatMs(elapsedMs)}
+                  {successCount}/{totalCount} nodes · {formatMs(elapsedMs)}
                 </p>
               )}
             </div>
@@ -483,7 +833,7 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
           </button>
         </div>
 
-        {/* Wallet info */}
+        {/* Wallet info bar */}
         <div
           className="px-4 sm:px-5 py-2.5 sm:py-3 shrink-0 flex items-center justify-between"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
@@ -809,11 +1159,17 @@ export function RunFlowDialog({ open, onClose }: RunFlowDialogProps) {
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded-full ml-auto"
                 style={{
-                  background: "rgba(255,255,255,0.12)",
-                  color: "rgba(255,255,255,0.7)",
+                  background: isDevnet()
+                    ? "rgba(250,204,21,0.15)"
+                    : "rgba(255,255,255,0.12)",
+                  color: isDevnet() ? "#facc15" : "rgba(255,255,255,0.7)",
                 }}
               >
-                {walletType === "phantom" ? "0.001 SOL" : "0.00079 ETH"}
+                {isDevnet()
+                  ? "FREE · DEVNET"
+                  : walletType === "phantom"
+                    ? "0.001 SOL"
+                    : "0.00079 ETH"}
               </span>
             </button>
           )}

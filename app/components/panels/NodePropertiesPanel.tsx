@@ -622,6 +622,13 @@ function MultiWalletPanel({
   const wallets: WalletEntry[] = Array.isArray(data.wallets)
     ? (data.wallets as WalletEntry[])
     : [];
+
+  // ── FIX: keep a ref that's always current so mutators never close over stale wallets ──
+  const walletsRef = useRef<WalletEntry[]>(wallets);
+  useEffect(() => {
+    walletsRef.current = wallets;
+  }, [wallets]);
+
   const executeSequentially = Boolean(data.executeSequentially ?? true);
   const selectedChain = (data.chain as string) || "solana";
 
@@ -648,16 +655,18 @@ function MultiWalletPanel({
     setAddMode("manual");
   };
 
+  // ── FIX: all mutators now read from walletsRef.current, never the stale closure ──
+
   const addWallet = () => {
     if (!newAddress.trim() || !newPrivateKey.trim()) return;
     updateNodeData(nodeId, {
       wallets: [
-        ...wallets,
+        ...walletsRef.current,
         {
           id: `w-${Date.now()}`,
           address: newAddress.trim(),
           privateKey: newPrivateKey.trim(),
-          label: newLabel.trim() || `Wallet ${wallets.length + 1}`,
+          label: newLabel.trim() || `Wallet ${walletsRef.current.length + 1}`,
           chain: newChain,
           enabled: true,
           walletType: "manual",
@@ -669,10 +678,10 @@ function MultiWalletPanel({
   };
 
   const importConnected = (cw: (typeof connectedWallets)[0]) => {
-    if (wallets.find((w) => w.address === cw.address)) return;
+    if (walletsRef.current.find((w) => w.address === cw.address)) return;
     updateNodeData(nodeId, {
       wallets: [
-        ...wallets,
+        ...walletsRef.current,
         {
           id: `w-${Date.now()}`,
           address: cw.address,
@@ -689,23 +698,31 @@ function MultiWalletPanel({
   };
 
   const removeWallet = (id: string) =>
-    updateNodeData(nodeId, { wallets: wallets.filter((w) => w.id !== id) });
+    updateNodeData(nodeId, {
+      wallets: walletsRef.current.filter((w) => w.id !== id),
+    });
+
   const toggleWallet = (id: string) =>
     updateNodeData(nodeId, {
-      wallets: wallets.map((w) =>
+      wallets: walletsRef.current.map((w) =>
         w.id === id ? { ...w, enabled: !w.enabled } : w,
       ),
     });
+
   const updatePK = (id: string, key: string) =>
     updateNodeData(nodeId, {
-      wallets: wallets.map((w) =>
+      wallets: walletsRef.current.map((w) =>
         w.id === id ? { ...w, privateKey: key } : w,
       ),
     });
+
   const updateWalletLabel = (id: string, label: string) =>
     updateNodeData(nodeId, {
-      wallets: wallets.map((w) => (w.id === id ? { ...w, label } : w)),
+      wallets: walletsRef.current.map((w) =>
+        w.id === id ? { ...w, label } : w,
+      ),
     });
+
   const copyAddr = (id: string, addr: string) => {
     navigator.clipboard.writeText(addr).catch(() => {});
     setCopiedId(id);
@@ -1101,7 +1118,7 @@ function MultiWalletPanel({
                         : {
                             background: "rgba(51,65,85,0.2)",
                             color: "rgba(100,116,139,0.4)",
-                            borderColor: "rgba(51,65,85,0.3)",
+                            borderColor: "rgba(51,65,65,0.3)",
                           }
                     }
                   >
@@ -2200,7 +2217,6 @@ export function NodePropertiesPanel() {
                 </FieldGroup>
               </>
             )}
-            {/* FIX: Role ID field for role task — needed to verify role assignment */}
             {tt === "role" && (
               <FieldGroup>
                 <FieldLabel>Role ID</FieldLabel>
@@ -2288,7 +2304,6 @@ export function NodePropertiesPanel() {
                 </span>
               </div>
             </FieldGroup>
-            {/* FIX: Manual wallet fallback when no upstream node injects walletPublicKey */}
             {!hasWallet && (
               <FieldGroup>
                 <FieldLabel>Wallet Address (manual fallback)</FieldLabel>
@@ -2297,7 +2312,6 @@ export function NodePropertiesPanel() {
                   value={str(selectedNode.data.manualWalletAddress)}
                   onChange={(e) => {
                     updateField("manualWalletAddress", e.target.value);
-                    // also write to walletPublicKey so the node picks it up
                     updateField("walletPublicKey", e.target.value || undefined);
                   }}
                   className="font-mono"
@@ -2468,7 +2482,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             </div>
-            {/* FIX: delayMs was used by the node but never exposed in the panel */}
             <div className="grid grid-cols-2 gap-2">
               <FieldGroup>
                 <FieldLabel>DEX</FieldLabel>
@@ -2526,7 +2539,6 @@ export function NodePropertiesPanel() {
       case "claimAirdrop":
         return (
           <>
-            {/* FIX: walletAddress is the field the node actually uses for live airdrop scanning */}
             <FieldGroup>
               <FieldLabel>Wallet Address (EVM)</FieldLabel>
               <StyledInput
@@ -2738,7 +2750,6 @@ export function NodePropertiesPanel() {
                 />
               </FieldGroup>
             )}
-            {/* FIX: Jito bundle needs tip config — node fetches live data but tip was never configurable */}
             {strategy === "jito" && (
               <>
                 <FieldGroup>

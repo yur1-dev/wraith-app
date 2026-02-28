@@ -17,20 +17,39 @@ export const telegramStore = {
     await kv.set(P.pending(token), wallet, { ex: 600 }); // 10 min TTL
   },
 
+  async getPending(token: string): Promise<string | null> {
+    return kv.get<string>(P.pending(token));
+  },
+
   async linkToken(token: string, chatId: string): Promise<boolean> {
     const wallet = await kv.get<string>(P.pending(token));
-    if (!wallet) return false;
+    if (!wallet) {
+      console.warn(`[telegram-store] token not found: "${token}"`);
+      return false;
+    }
+
+    // Clean up old chat mapping if wallet reconnects from different chat
+    const oldChatId = await kv.get<string>(P.wallet(wallet));
+    if (oldChatId && oldChatId !== chatId) {
+      await kv.del(P.chat(oldChatId));
+    }
 
     await Promise.all([
       kv.set(P.wallet(wallet), chatId),
       kv.set(P.chat(chatId), wallet),
       kv.del(P.pending(token)),
     ]);
+
+    console.log(`[telegram-store] linked wallet=${wallet} chatId=${chatId}`);
     return true;
   },
 
   async getChatId(wallet: string): Promise<string | null> {
     return kv.get<string>(P.wallet(wallet));
+  },
+
+  async getWalletByChatId(chatId: string): Promise<string | null> {
+    return kv.get<string>(P.chat(chatId));
   },
 
   async isConnected(wallet: string): Promise<boolean> {
@@ -41,19 +60,19 @@ export const telegramStore = {
     return (await kv.get(P.chat(chatId))) !== null;
   },
 
-  async disconnectByChatId(chatId: string) {
-    const wallet = await kv.get<string>(P.chat(chatId));
-    await Promise.all([
-      wallet ? kv.del(P.wallet(wallet)) : Promise.resolve(),
-      kv.del(P.chat(chatId)),
-    ]);
-  },
-
   async removeByWallet(wallet: string) {
     const chatId = await kv.get<string>(P.wallet(wallet));
     await Promise.all([
       kv.del(P.wallet(wallet)),
       chatId ? kv.del(P.chat(chatId)) : Promise.resolve(),
+    ]);
+  },
+
+  async disconnectByChatId(chatId: string) {
+    const wallet = await kv.get<string>(P.chat(chatId));
+    await Promise.all([
+      kv.del(P.chat(chatId)),
+      wallet ? kv.del(P.wallet(wallet)) : Promise.resolve(),
     ]);
   },
 };
