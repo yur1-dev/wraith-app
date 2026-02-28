@@ -37,13 +37,60 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// ── Price helpers (server-side) ───────────────────────────────────────────────
+
+async function getLiveSolPrice(): Promise<number> {
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
+      { signal: AbortSignal.timeout(5000) },
+    );
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+    return d.solana.usd as number;
+  } catch {
+    return 150; // fallback
+  }
+}
+
+async function getLiveEthPrice(): Promise<number> {
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+      { signal: AbortSignal.timeout(5000) },
+    );
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+    return d.ethereum.usd as number;
+  } catch {
+    return 2500; // fallback
+  }
+}
+
+function computeLamports(usd: number, solPrice: number): number {
+  const raw = (usd / solPrice) * 1e9;
+  return Math.round(raw / 1000) * 1000;
+}
+
+function computeWei(usd: number, ethPrice: number): bigint {
+  const ethAmount = usd / ethPrice;
+  return BigInt(Math.round(ethAmount * 1e18));
+}
+
+// ── Verifiers ─────────────────────────────────────────────────────────────────
+
 async function verifySolanaFee(
   signature: string,
   walletAddress: string,
 ): Promise<{ verified: boolean; error?: string }> {
   try {
-    const rpcUrl =
-      process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+    const isDevnet =
+      process.env.NEXT_PUBLIC_SOLANA_NETWORK === "devnet" ||
+      process.env.SOLANA_NETWORK === "devnet";
+
+    const rpcUrl = isDevnet
+      ? "https://api.devnet.solana.com"
+      : process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
 
     const response = await fetch(rpcUrl, {
       method: "POST",
@@ -66,12 +113,10 @@ async function verifySolanaFee(
       return { verified: false, error: "Transaction not found on chain" };
     }
 
-    // Check it didn't fail
     if (tx.meta?.err) {
       return { verified: false, error: "Transaction failed on chain" };
     }
 
-    // Check transfer went to our treasury
     const instructions = tx.transaction?.message?.instructions ?? [];
     const transfer = instructions.find(
       (ix: any) =>
@@ -86,19 +131,28 @@ async function verifySolanaFee(
       };
     }
 
-    const lamports = transfer.parsed?.info?.lamports ?? 0;
-    const minLamports = FEE_CONFIG.SOL.lamports * 0.99; // 1% tolerance
+    const lamports: number = transfer.parsed?.info?.lamports ?? 0;
+
+    // Compute the expected lamports dynamically
+    let expectedLamports: number;
+    if (isDevnet) {
+      expectedLamports = FEE_CONFIG.SOL.devnetLamports;
+    } else {
+      const solPrice = await getLiveSolPrice();
+      expectedLamports = computeLamports(FEE_CONFIG.SOL.targetUsd, solPrice);
+    }
+
+    const minLamports = Math.floor(expectedLamports * 0.99); // 1% tolerance
 
     if (lamports < minLamports) {
       return {
         verified: false,
-        error: `Fee too low: got ${lamports} lamports, expected ${FEE_CONFIG.SOL.lamports}`,
+        error: `Fee too low: got ${lamports} lamports, expected ~${expectedLamports}`,
       };
     }
 
     return { verified: true };
   } catch (err: any) {
-    // In dev/simulation mode — skip verification
     if (
       process.env.NODE_ENV === "development" &&
       process.env.SKIP_FEE_VERIFY === "true"
@@ -116,7 +170,7 @@ async function verifyEthFee(
   try {
     const rpcUrl = process.env.ETHEREUM_RPC_URL || "https://eth.llamarpc.com";
 
-    const response = await fetch(rpcUrl, {
+    const receiptRes = await fetch(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -127,8 +181,8 @@ async function verifyEthFee(
       }),
     });
 
-    const data = await response.json();
-    const receipt = data.result;
+    const receiptData = await receiptRes.json();
+    const receipt = receiptData.result;
 
     if (!receipt) {
       return { verified: false, error: "Transaction not found on chain" };
@@ -138,8 +192,7 @@ async function verifyEthFee(
       return { verified: false, error: "Transaction failed on chain" };
     }
 
-    // Verify recipient is our treasury
-    const txResponse = await fetch(rpcUrl, {
+    const txRes = await fetch(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -150,7 +203,7 @@ async function verifyEthFee(
       }),
     });
 
-    const txData = await txResponse.json();
+    const txData = await txRes.json();
     const tx = txData.result;
 
     if (tx?.to?.toLowerCase() !== FEE_CONFIG.ETH.treasury.toLowerCase()) {
@@ -158,10 +211,17 @@ async function verifyEthFee(
     }
 
     const valueWei = BigInt(tx.value);
-    const minWei = (BigInt(FEE_CONFIG.ETH.wei) * BigInt(99)) / BigInt(100);
+
+    // Compute expected wei dynamically
+    const ethPrice = await getLiveEthPrice();
+    const expectedWei = computeWei(FEE_CONFIG.ETH.targetUsd, ethPrice);
+    const minWei = (expectedWei * BigInt(99)) / BigInt(100); // 1% tolerance
 
     if (valueWei < minWei) {
-      return { verified: false, error: `Fee too low: got ${valueWei} wei` };
+      return {
+        verified: false,
+        error: `Fee too low: got ${valueWei} wei, expected ~${expectedWei}`,
+      };
     }
 
     return { verified: true };
