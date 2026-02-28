@@ -51,15 +51,12 @@ const ack = (id: string, text = "") =>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const D = "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰";
-const D2 = "· · · · · · · · · · ·";
-
-function sw(w: string) {
-  if (!w) return "unknown";
-  return w.length > 12 ? `${w.slice(0, 6)}···${w.slice(-4)}` : w;
+function shortWallet(w: string) {
+  if (!w) return "—";
+  return w.length > 16 ? `${w.slice(0, 6)}...${w.slice(-4)}` : w;
 }
 
-function ts() {
+function timestamp() {
   return (
     new Date().toLocaleString("en-US", {
       month: "short",
@@ -78,63 +75,50 @@ const kb = {
   home: () => ({
     inline_keyboard: [
       [
-        { text: "📡 Status", callback_data: "status" },
-        { text: "📋 My Flows", callback_data: "flows_info" },
+        { text: "Status", callback_data: "status" },
+        { text: "Wallet", callback_data: "wallet_info" },
       ],
       [
-        { text: "🔔 Alert Settings", callback_data: "alerts" },
-        { text: "💼 Wallet Info", callback_data: "wallet_info" },
+        { text: "Alert Config", callback_data: "alerts" },
+        { text: "Flow Nodes", callback_data: "flows_info" },
       ],
       [
-        { text: "❓ Help", callback_data: "help" },
-        { text: "ℹ️ About Wraith", callback_data: "about" },
+        { text: "Help", callback_data: "help" },
+        { text: "About", callback_data: "about" },
       ],
-      [{ text: "🌐 Open Wraith App", url: APP_URL }],
-      [{ text: "🔌 Disconnect", callback_data: "disconnect_ask" }],
+      [{ text: "Open Wraith  →", url: APP_URL }],
+      [{ text: "Disconnect", callback_data: "disconnect_ask" }],
     ],
   }),
 
   homeNew: () => ({
     inline_keyboard: [
-      [{ text: "🚀 Get Started", url: APP_URL }],
+      [{ text: "Connect Wallet  →", url: APP_URL }],
       [
-        { text: "📖 How to Connect", callback_data: "how_to" },
-        { text: "ℹ️ About Wraith", callback_data: "about" },
+        { text: "How to connect", callback_data: "how_to" },
+        { text: "About", callback_data: "about" },
       ],
-      [{ text: "❓ Help", callback_data: "help" }],
+      [{ text: "Help", callback_data: "help" }],
     ],
   }),
 
-  back: (to = "main_menu") => ({
-    inline_keyboard: [[{ text: "‹ Back to Menu", callback_data: to }]],
-  }),
-
   backHome: () => ({
-    inline_keyboard: [[{ text: "‹ Back", callback_data: "main_menu" }]],
+    inline_keyboard: [[{ text: "← Back", callback_data: "main_menu" }]],
   }),
 
   disconnectConfirm: () => ({
     inline_keyboard: [
       [
-        { text: "⚠️ Yes, Disconnect", callback_data: "disconnect_yes" },
-        { text: "✕ Cancel", callback_data: "main_menu" },
+        { text: "Disconnect", callback_data: "disconnect_yes" },
+        { text: "Cancel", callback_data: "main_menu" },
       ],
     ],
   }),
 
   reconnect: () => ({
     inline_keyboard: [
-      [{ text: "🔗 Reconnect via App", url: APP_URL }],
-      [{ text: "❓ How to Connect", callback_data: "how_to" }],
-    ],
-  }),
-
-  alertActions: () => ({
-    inline_keyboard: [
-      [
-        { text: "📡 Status", callback_data: "status" },
-        { text: "🏠 Menu", callback_data: "main_menu" },
-      ],
+      [{ text: "Reconnect  →", url: APP_URL }],
+      [{ text: "How to connect", callback_data: "how_to" }],
     ],
   }),
 };
@@ -142,343 +126,256 @@ const kb = {
 // ─── Message Templates ────────────────────────────────────────────────────────
 
 function msgHome(name: string, wallet: string) {
-  return [
-    `⬡  <b>WRAITH</b> — DeFi Automation`,
-    D,
-    ``,
-    `👋 Welcome back, <b>${name}</b>`,
-    ``,
-    `<b>● Status</b>      Connected`,
-    `<b>● Wallet</b>      <code>${sw(wallet)}</code>`,
-    `<b>● Alerts</b>      Active ✓`,
-    `<b>● Network</b>     Auto-detect`,
-    ``,
-    D2,
-    ``,
-    `Your flow executions will be delivered`,
-    `here in real-time — swaps, bridges,`,
-    `completions, errors, and more.`,
-    ``,
-    `<i>Select an option below ↓</i>`,
-  ].join("\n");
+  return (
+    `<b>WRAITH</b>  ·  DeFi Automation\n` +
+    `─────────────────────\n\n` +
+    `Hello, <b>${name}</b>\n\n` +
+    `<code>STATUS   </code>  Connected\n` +
+    `<code>WALLET   </code>  <code>${shortWallet(wallet)}</code>\n` +
+    `<code>ALERTS   </code>  Active\n` +
+    `<code>NETWORK  </code>  Auto-detect\n\n` +
+    `─────────────────────\n` +
+    `Flow executions will be delivered here\n` +
+    `in real-time. Swaps, bridges, errors.\n\n` +
+    `<i>Select an option below.</i>`
+  );
 }
 
 function msgHomeNew(name: string) {
-  return [
-    `⬡  <b>WRAITH</b> — DeFi Automation`,
-    D,
-    ``,
-    `👋 Hey <b>${name}</b>, welcome.`,
-    ``,
-    `<b>● Status</b>      Not connected`,
-    `<b>● Alerts</b>      Inactive`,
-    ``,
-    D2,
-    ``,
-    `I'm your Wraith alert bot.`,
-    `Connect your wallet to start receiving`,
-    `real-time flow execution alerts.`,
-    ``,
-    `<b>Alerts include:</b>`,
-    `  🔁 Swap results + tx hash`,
-    `  🌉 Bridge transactions`,
-    `  ✅ Flow completions`,
-    `  ❌ Errors + failed nodes`,
-    `  ⏰ Trigger activations`,
-    ``,
-    `<i>Tap Get Started to connect ↓</i>`,
-  ].join("\n");
+  return (
+    `<b>WRAITH</b>  ·  DeFi Automation\n` +
+    `─────────────────────\n\n` +
+    `Hello, <b>${name}</b>\n\n` +
+    `<code>STATUS   </code>  Not connected\n` +
+    `<code>ALERTS   </code>  Inactive\n\n` +
+    `─────────────────────\n\n` +
+    `Connect your wallet to receive real-time\n` +
+    `flow execution alerts in this chat.\n\n` +
+    `Alerts include:\n` +
+    `  · Swap results + tx hash\n` +
+    `  · Bridge transactions\n` +
+    `  · Flow completions\n` +
+    `  · Errors and warnings\n` +
+    `  · Trigger activations\n\n` +
+    `<i>Tap Connect Wallet to get started.</i>`
+  );
 }
 
 function msgStatus(wallet: string, chatId: string) {
-  return [
-    `📡  <b>Connection Status</b>`,
-    D,
-    ``,
-    `<b>● Status</b>      🟢 Active`,
-    `<b>● Alerts</b>      Enabled`,
-    ``,
-    `<b>Wallet Address</b>`,
-    `<code>${wallet}</code>`,
-    ``,
-    `<b>Telegram Chat ID</b>`,
-    `<code>${chatId}</code>`,
-    ``,
-    D2,
-    `<i>Last checked: ${ts()}</i>`,
-    ``,
-    `<i>All flow executions linked to this`,
-    `wallet will notify this chat.</i>`,
-  ].join("\n");
+  return (
+    `<b>Connection Status</b>\n` +
+    `─────────────────────\n\n` +
+    `<code>STATUS   </code>  Active\n` +
+    `<code>ALERTS   </code>  Enabled\n\n` +
+    `<b>Wallet</b>\n` +
+    `<code>${wallet}</code>\n\n` +
+    `<b>Chat ID</b>\n` +
+    `<code>${chatId}</code>\n\n` +
+    `─────────────────────\n` +
+    `<i>Checked: ${timestamp()}</i>\n\n` +
+    `All flows linked to this wallet will\n` +
+    `send alerts to this chat.`
+  );
 }
 
 function msgStatusNew() {
-  return [
-    `📡  <b>Connection Status</b>`,
-    D,
-    ``,
-    `<b>● Status</b>      🔴 Disconnected`,
-    `<b>● Alerts</b>      Paused`,
-    ``,
-    D2,
-    ``,
-    `No wallet is linked to this chat.`,
-    ``,
-    `To connect, open the Wraith app,`,
-    `drop an <b>Alert</b> node, set channel`,
-    `to <b>Telegram</b>, then click <b>Open bot</b>.`,
-  ].join("\n");
+  return (
+    `<b>Connection Status</b>\n` +
+    `─────────────────────\n\n` +
+    `<code>STATUS   </code>  Disconnected\n` +
+    `<code>ALERTS   </code>  Paused\n\n` +
+    `─────────────────────\n\n` +
+    `No wallet is linked to this chat.\n\n` +
+    `To connect: open Wraith, add an Alert\n` +
+    `node, set channel to Telegram, then\n` +
+    `click <b>Open bot</b>.`
+  );
 }
 
 function msgWalletInfo(wallet: string) {
   const isSOL =
     wallet.length >= 32 && wallet.length <= 44 && !wallet.startsWith("0x");
   const chain = isSOL ? "Solana" : "EVM";
-  const explorerBase = isSOL
+  const explorer = isSOL
     ? `https://explorer.solana.com/address/${wallet}`
     : `https://etherscan.io/address/${wallet}`;
 
-  return [
-    `💼  <b>Wallet Info</b>`,
-    D,
-    ``,
-    `<b>Address</b>`,
-    `<code>${wallet}</code>`,
-    ``,
-    `<b>● Network</b>     ${chain}`,
-    `<b>● Short</b>       <code>${sw(wallet)}</code>`,
-    ``,
-    D2,
-    ``,
-    `<a href="${explorerBase}">🔍 View on Explorer ↗</a>`,
-    ``,
-    `<i>This wallet receives all flow alerts`,
-    `and is used for swap/bridge execution.</i>`,
-  ].join("\n");
+  return (
+    `<b>Wallet Info</b>\n` +
+    `─────────────────────\n\n` +
+    `<b>Address</b>\n` +
+    `<code>${wallet}</code>\n\n` +
+    `<code>NETWORK  </code>  ${chain}\n` +
+    `<code>SHORT    </code>  <code>${shortWallet(wallet)}</code>\n\n` +
+    `─────────────────────\n` +
+    `<a href="${explorer}">View on Explorer  →</a>\n\n` +
+    `<i>This wallet is used for all flow\n` +
+    `execution and alert delivery.</i>`
+  );
 }
 
 function msgFlowsInfo() {
-  return [
-    `📋  <b>Flow Execution</b>`,
-    D,
-    ``,
-    `Wraith flows are visual automation`,
-    `pipelines built in the app.`,
-    ``,
-    `<b>Node types:</b>`,
-    ``,
-    `⏰ <b>Trigger</b>`,
-    `   Starts the flow — manual, scheduled,`,
-    `   or on a price condition`,
-    ``,
-    `💼 <b>Multi-Wallet</b>`,
-    `   Run the flow across multiple wallets`,
-    `   simultaneously`,
-    ``,
-    `🔁 <b>Swap</b>`,
-    `   Execute token swaps via Jupiter,`,
-    `   Orca, or Raydium`,
-    ``,
-    `🌉 <b>Bridge</b>`,
-    `   Move assets cross-chain`,
-    ``,
-    `🔀 <b>Condition</b>`,
-    `   Branch flow based on price/balance`,
-    ``,
-    `🔔 <b>Alert</b>`,
-    `   Send notifications — that's this bot`,
-    ``,
-    D2,
-    ``,
-    `<a href="${APP_URL}">🌐 Build a flow in the app ↗</a>`,
-  ].join("\n");
+  return (
+    `<b>Flow Nodes</b>\n` +
+    `─────────────────────\n\n` +
+    `Flows are visual automation pipelines\n` +
+    `built in the Wraith canvas.\n\n` +
+    `<b>TRIGGER</b>\n` +
+    `Starts the flow. Manual, scheduled,\n` +
+    `or on a price/balance condition.\n\n` +
+    `<b>MULTI-WALLET</b>\n` +
+    `Execute across multiple wallets\n` +
+    `simultaneously.\n\n` +
+    `<b>SWAP</b>\n` +
+    `Token swaps via Jupiter, Orca,\n` +
+    `or Raydium.\n\n` +
+    `<b>BRIDGE</b>\n` +
+    `Move assets across chains.\n\n` +
+    `<b>CONDITION</b>\n` +
+    `Branch the flow based on price\n` +
+    `or balance thresholds.\n\n` +
+    `<b>ALERT</b>\n` +
+    `Send notifications — that's this bot.\n\n` +
+    `─────────────────────\n` +
+    `<a href="${APP_URL}">Build a flow  →</a>`
+  );
 }
 
 function msgAlerts() {
-  return [
-    `🔔  <b>Alert Settings</b>`,
-    D,
-    ``,
-    `<b>● Delivery</b>     This chat`,
-    `<b>● Status</b>       Active`,
-    `<b>● Trigger</b>      Auto on execution`,
-    ``,
-    D2,
-    ``,
-    `<b>You'll receive alerts for:</b>`,
-    ``,
-    `✅  <b>Flow Completed</b>`,
-    `    Per-node results, total runtime,`,
-    `    success/fail count`,
-    ``,
-    `❌  <b>Flow Failed</b>`,
-    `    Which node failed, error message,`,
-    `    stack context`,
-    ``,
-    `🔁  <b>Swap Executed</b>`,
-    `    Token pair, input/output amounts,`,
-    `    DEX used, tx hash with explorer link`,
-    ``,
-    `🌉  <b>Bridge Initiated</b>`,
-    `    From/to chain, amount, status`,
-    ``,
-    `⚠️  <b>Node Warning</b>`,
-    `    Skipped nodes, partial failures`,
-    ``,
-    D2,
-    ``,
-    `<b>Format</b>      HTML with inline links`,
-    `<b>Latency</b>     &lt; 1 second after execution`,
-  ].join("\n");
+  return (
+    `<b>Alert Configuration</b>\n` +
+    `─────────────────────\n\n` +
+    `<code>DELIVERY </code>  This chat\n` +
+    `<code>STATUS   </code>  Active\n` +
+    `<code>TRIGGER  </code>  On execution\n` +
+    `<code>LATENCY  </code>  &lt;1 second\n\n` +
+    `─────────────────────\n\n` +
+    `<b>FLOW COMPLETED</b>\n` +
+    `Per-node results, total runtime,\n` +
+    `success/fail breakdown.\n\n` +
+    `<b>FLOW FAILED</b>\n` +
+    `Which node failed, error message,\n` +
+    `and context.\n\n` +
+    `<b>SWAP EXECUTED</b>\n` +
+    `Token pair, amounts in/out, DEX\n` +
+    `used, tx hash with explorer link.\n\n` +
+    `<b>BRIDGE INITIATED</b>\n` +
+    `Source/destination chain, amount,\n` +
+    `bridge status.\n\n` +
+    `<b>NODE WARNING</b>\n` +
+    `Skipped nodes, partial failures,\n` +
+    `condition mismatches.\n\n` +
+    `─────────────────────\n` +
+    `<i>Format: HTML  ·  Inline links</i>`
+  );
 }
 
 function msgHelp() {
-  return [
-    `❓  <b>Wraith Bot — Help</b>`,
-    D,
-    ``,
-    `<b>Commands</b>`,
-    ``,
-    `<code>/start</code>       Open the main menu`,
-    `<code>/status</code>      Check wallet connection`,
-    `<code>/alerts</code>      View alert configuration`,
-    `<code>/disconnect</code>  Unlink this chat`,
-    `<code>/help</code>        Show this screen`,
-    ``,
-    D2,
-    ``,
-    `<b>How alerts work</b>`,
-    ``,
-    `1. Build a flow in the Wraith app`,
-    `2. Add an Alert node → set to Telegram`,
-    `3. Click "Open bot" to link your wallet`,
-    `4. Run the flow — alerts arrive here`,
-    ``,
-    D2,
-    ``,
-    `<b>Troubleshooting</b>`,
-    ``,
-    `• Not getting alerts?`,
-    `  → Check <code>/status</code> is Connected`,
-    `  → Re-run the flow from the app`,
-    ``,
-    `• Wrong wallet linked?`,
-    `  → Use /disconnect then reconnect`,
-    ``,
-    `• Bot not responding?`,
-    `  → Type /start to reset`,
-    ``,
-    D2,
-    `<a href="${APP_URL}">🌐 Open Wraith App ↗</a>`,
-  ].join("\n");
+  return (
+    `<b>Help</b>\n` +
+    `─────────────────────\n\n` +
+    `<b>Commands</b>\n\n` +
+    `<code>/start</code>        Main menu\n` +
+    `<code>/status</code>       Connection status\n` +
+    `<code>/alerts</code>       Alert config\n` +
+    `<code>/disconnect</code>   Unlink wallet\n` +
+    `<code>/help</code>         This screen\n\n` +
+    `─────────────────────\n\n` +
+    `<b>Setup</b>\n\n` +
+    `1  Open the Wraith app\n` +
+    `2  Connect your wallet\n` +
+    `3  Add an Alert node to your flow\n` +
+    `4  Set channel → Telegram\n` +
+    `5  Click Open bot, send /start\n\n` +
+    `─────────────────────\n\n` +
+    `<b>Issues</b>\n\n` +
+    `Not receiving alerts?\n` +
+    `  Check <code>/status</code> shows Connected\n` +
+    `  Re-run the flow from the app\n\n` +
+    `Wrong wallet linked?\n` +
+    `  Use /disconnect then reconnect\n\n` +
+    `Bot not responding?\n` +
+    `  Send /start to reset\n\n` +
+    `─────────────────────\n` +
+    `<a href="${APP_URL}">Open Wraith  →</a>`
+  );
 }
 
 function msgAbout() {
-  return [
-    `⬡  <b>About Wraith</b>`,
-    D,
-    ``,
-    `Wraith is a no-code DeFi automation`,
-    `platform — think Zapier for crypto.`,
-    ``,
-    `Build visual flow pipelines to automate`,
-    `on-chain strategies without writing code.`,
-    ``,
-    D2,
-    ``,
-    `<b>What you can automate:</b>`,
-    ``,
-    `  🔁 Token swaps across DEXes`,
-    `  🌉 Cross-chain bridges`,
-    `  💼 Multi-wallet execution`,
-    `  ⏰ Scheduled / triggered flows`,
-    `  🔀 Conditional logic (price, balance)`,
-    `  🔔 Real-time Telegram alerts`,
-    ``,
-    D2,
-    ``,
-    `<b>Networks</b>    Solana + EVM`,
-    `<b>DEXes</b>       Jupiter · Orca · Raydium`,
-    `<b>Status</b>      Beta`,
-    ``,
-    `<a href="${APP_URL}">🌐 wraith-app.vercel.app ↗</a>`,
-  ].join("\n");
+  return (
+    `<b>About Wraith</b>\n` +
+    `─────────────────────\n\n` +
+    `Wraith is a no-code DeFi automation\n` +
+    `platform. Build visual flow pipelines\n` +
+    `to automate on-chain strategies.\n\n` +
+    `─────────────────────\n\n` +
+    `<b>Automate</b>\n\n` +
+    `  · Token swaps across DEXes\n` +
+    `  · Cross-chain bridges\n` +
+    `  · Multi-wallet execution\n` +
+    `  · Scheduled / triggered flows\n` +
+    `  · Conditional logic\n` +
+    `  · Real-time Telegram alerts\n\n` +
+    `─────────────────────\n\n` +
+    `<code>NETWORKS </code>  Solana · EVM\n` +
+    `<code>DEXES    </code>  Jupiter · Orca · Raydium\n` +
+    `<code>STATUS   </code>  Beta\n\n` +
+    `<a href="${APP_URL}">wraith-app.vercel.app  →</a>`
+  );
 }
 
 function msgHowTo() {
-  return [
-    `📖  <b>How to Connect</b>`,
-    D,
-    ``,
-    `<b>Step 1</b>  Open the Wraith app`,
-    `<a href="${APP_URL}">→ wraith-app.vercel.app</a>`,
-    ``,
-    `<b>Step 2</b>  Connect your wallet`,
-    `→ Click the wallet button (top bar)`,
-    `→ Connect Phantom, Solflare, or EVM`,
-    ``,
-    `<b>Step 3</b>  Add an Alert node`,
-    `→ Canvas → Core tab → drag Alert`,
-    `→ Set channel to <b>Telegram</b>`,
-    ``,
-    `<b>Step 4</b>  Link this bot`,
-    `→ Click <b>Open bot</b> in the node panel`,
-    `→ You'll be redirected here`,
-    `→ Send /start — done ✓`,
-    ``,
-    D2,
-    ``,
-    `<i>Your wallet address is automatically`,
-    `linked to this Telegram chat.</i>`,
-    `<i>All future flow runs will notify you here.</i>`,
-  ].join("\n");
+  return (
+    `<b>How to Connect</b>\n` +
+    `─────────────────────\n\n` +
+    `<b>1  Open the Wraith app</b>\n` +
+    `<a href="${APP_URL}">wraith-app.vercel.app</a>\n\n` +
+    `<b>2  Connect your wallet</b>\n` +
+    `Click the wallet button in the top bar.\n` +
+    `Supports Phantom, Solflare, MetaMask.\n\n` +
+    `<b>3  Add an Alert node</b>\n` +
+    `Canvas → Core tab → drag Alert node.\n` +
+    `Set the channel to <b>Telegram</b>.\n\n` +
+    `<b>4  Link this bot</b>\n` +
+    `Click <b>Open bot</b> in the node panel.\n` +
+    `You'll be redirected here.\n` +
+    `Send /start — you're done.\n\n` +
+    `─────────────────────\n\n` +
+    `<i>Your wallet is automatically linked\n` +
+    `to this chat. All future flow runs\n` +
+    `will send alerts here.</i>`
+  );
 }
 
 function msgDisconnectAsk(wallet: string) {
-  return [
-    `🔌  <b>Disconnect Wallet</b>`,
-    D,
-    ``,
-    `You're about to unlink this wallet`,
-    `from Telegram alerts:`,
-    ``,
-    `<code>${wallet}</code>`,
-    ``,
-    `<b>What happens:</b>`,
-    `  • This chat stops receiving alerts`,
-    `  • Your flows keep running in the app`,
-    `  • You can reconnect anytime`,
-    ``,
-    D2,
-    ``,
-    `<b>⚠️ Are you sure?</b>`,
-  ].join("\n");
+  return (
+    `<b>Disconnect Wallet</b>\n` +
+    `─────────────────────\n\n` +
+    `You are about to unlink:\n\n` +
+    `<code>${wallet}</code>\n\n` +
+    `─────────────────────\n\n` +
+    `  · This chat stops receiving alerts\n` +
+    `  · Your flows keep running in the app\n` +
+    `  · You can reconnect at any time\n\n` +
+    `<b>Confirm disconnect?</b>`
+  );
 }
 
 function msgDisconnected() {
-  return [
-    `🔌  <b>Wallet Disconnected</b>`,
-    D,
-    ``,
-    `<b>● Status</b>      🔴 Inactive`,
-    `<b>● Alerts</b>      Paused`,
-    ``,
-    `Your wallet has been unlinked.`,
-    `You won't receive flow alerts`,
-    `until you reconnect.`,
-    ``,
-    D2,
-    ``,
-    `To reconnect, open the Wraith app,`,
-    `find your Alert node, and click`,
-    `<b>Open bot</b> again.`,
-    ``,
-    `<i>Your flows are still active in the app.</i>`,
-  ].join("\n");
+  return (
+    `<b>Wallet Disconnected</b>\n` +
+    `─────────────────────\n\n` +
+    `<code>STATUS   </code>  Inactive\n` +
+    `<code>ALERTS   </code>  Paused\n\n` +
+    `─────────────────────\n\n` +
+    `Your wallet has been unlinked.\n` +
+    `Flow alerts are paused until\n` +
+    `you reconnect.\n\n` +
+    `<i>Your flows are still active in the app.</i>`
+  );
 }
 
-// ─── Execution Alert (called from sendAlert.ts) ───────────────────────────────
-// This is exported so lib/telegram/sendAlert.ts can import and use it directly.
+// ─── Execution Alert ──────────────────────────────────────────────────────────
 
 export interface NodeResult {
   label?: string;
@@ -524,73 +421,61 @@ export function buildExecutionAlert(params: {
 
   const lines: string[] = [];
 
-  // Header
-  if (allGood) {
-    lines.push(`✅  <b>Flow Completed</b>`);
-  } else {
-    lines.push(`❌  <b>Flow Failed</b>`);
-  }
-  lines.push(D);
+  lines.push(allGood ? `<b>Flow Completed</b>` : `<b>Flow Failed</b>`);
+  lines.push(`─────────────────────`);
   lines.push(``);
 
-  // Meta
-  lines.push(`<b>Flow</b>      ${name}`);
-  lines.push(`<b>Wallet</b>    <code>${sw(walletAddress)}</code>`);
-  lines.push(`<b>Network</b>   ${network}`);
-  lines.push(`<b>Time</b>      ${elapsed}`);
+  lines.push(`<code>FLOW     </code>  ${name}`);
   lines.push(
-    `<b>Nodes</b>     ${ok}/${total} passed${skipped > 0 ? ` · ${skipped} skipped` : ""}`,
+    `<code>WALLET   </code>  <code>${shortWallet(walletAddress)}</code>`,
+  );
+  lines.push(`<code>NETWORK  </code>  ${network}`);
+  lines.push(`<code>RUNTIME  </code>  ${elapsed}`);
+  lines.push(
+    `<code>NODES    </code>  ${ok}/${total} passed${skipped > 0 ? `  ·  ${skipped} skipped` : ""}`,
   );
   lines.push(``);
-  lines.push(D2);
+  lines.push(`─────────────────────`);
   lines.push(``);
-
-  // Per-node breakdown
-  lines.push(`<b>Execution Breakdown</b>`);
+  lines.push(`<b>Breakdown</b>`);
   lines.push(``);
 
   for (const node of results) {
     const icon =
-      node.status === "success" ? "✓" : node.status === "error" ? "✗" : "○";
+      node.status === "success" ? "+" : node.status === "error" ? "×" : "–";
     const label = node.label ?? node.type ?? "Node";
-    const dur = node.durationMs ? ` <i>${node.durationMs}ms</i>` : "";
+    const dur = node.durationMs ? `  <i>${node.durationMs}ms</i>` : "";
 
-    lines.push(`${icon} <b>${label}</b>${dur}`);
+    lines.push(`<code>${icon}</code>  <b>${label}</b>${dur}`);
 
     if (node.status === "success" && node.output) {
       const o = node.output;
 
-      // Swap details
       if (o.fromToken && o.toToken) {
         const amtIn = o.amountIn ?? "?";
         const amtOut = o.amountOut ?? "?";
-        const dex = o.dex ? ` via ${o.dex}` : "";
+        const dex = o.dex ? `  via ${o.dex}` : "";
         lines.push(
           `   <code>${amtIn} ${o.fromToken} → ${amtOut} ${o.toToken}</code>${dex}`,
         );
       }
 
-      // Bridge details
       if (o.chain || o.toChain) {
-        const from = o.chain ?? "?";
-        const to = o.toChain ?? "?";
-        lines.push(`   <code>${from} → ${to}</code>`);
+        lines.push(`   <code>${o.chain ?? "?"} → ${o.toChain ?? "?"}</code>`);
       }
 
-      // Tx hash
       if (o.txHash) {
         const base =
           network === "devnet"
             ? `https://explorer.solana.com/tx/${o.txHash}?cluster=devnet`
             : `https://explorer.solana.com/tx/${o.txHash}`;
         const short = `${o.txHash.slice(0, 8)}...${o.txHash.slice(-6)}`;
-        lines.push(`   <a href="${base}">🔗 ${short} ↗</a>`);
+        lines.push(`   <a href="${base}">${short}  →</a>`);
       }
     }
 
     if (node.status === "error" && node.output?.error) {
-      const err = String(node.output.error).slice(0, 100);
-      lines.push(`   ⚠️ <i>${err}</i>`);
+      lines.push(`   <i>${String(node.output.error).slice(0, 120)}</i>`);
     }
 
     if (node.status === "skipped") {
@@ -600,8 +485,8 @@ export function buildExecutionAlert(params: {
     lines.push(``);
   }
 
-  lines.push(D2);
-  lines.push(`<i>${ts()}</i>`);
+  lines.push(`─────────────────────`);
+  lines.push(`<i>${timestamp()}</i>`);
 
   const explorerUrl = walletAddress.startsWith("0x")
     ? `https://etherscan.io/address/${walletAddress}`
@@ -612,8 +497,8 @@ export function buildExecutionAlert(params: {
     reply_markup: {
       inline_keyboard: [
         [
-          { text: "🔍 View Wallet", url: explorerUrl },
-          { text: "🌐 Open App", url: APP_URL },
+          { text: "View Wallet  →", url: explorerUrl },
+          { text: "Open App  →", url: APP_URL },
         ],
       ],
     },
@@ -626,7 +511,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // ── Callback queries (button taps) ────────────────────────────────────────
     if (body?.callback_query) {
       const cb = body.callback_query;
       const chatId = String(cb.message?.chat?.id);
@@ -658,15 +542,12 @@ export async function POST(req: NextRequest) {
           break;
 
         case "wallet_info":
-          if (!wallet) {
-            await edit(chatId, msgId, msgStatusNew(), {
-              reply_markup: kb.backHome(),
-            });
-          } else {
-            await edit(chatId, msgId, msgWalletInfo(wallet), {
-              reply_markup: kb.backHome(),
-            });
-          }
+          await edit(
+            chatId,
+            msgId,
+            wallet ? msgWalletInfo(wallet) : msgStatusNew(),
+            { reply_markup: kb.backHome() },
+          );
           break;
 
         case "flows_info":
@@ -702,7 +583,7 @@ export async function POST(req: NextRequest) {
             await edit(
               chatId,
               msgId,
-              `❌ <b>Nothing to disconnect</b>\n\nNo wallet is linked to this chat.`,
+              `<b>Nothing to disconnect</b>\n\nNo wallet is linked to this chat.`,
               { reply_markup: kb.backHome() },
             );
           } else {
@@ -723,7 +604,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // ── Text / commands ───────────────────────────────────────────────────────
     const message = body?.message;
     if (!message) return NextResponse.json({ ok: true });
 
@@ -741,24 +621,16 @@ export async function POST(req: NextRequest) {
         const wallet = await telegramStore.getWalletByChatId(chatId);
         await send(
           chatId,
-          [
-            `⬡  <b>WRAITH</b> — Connected`,
-            D,
-            ``,
-            `✅ <b>Wallet linked successfully!</b>`,
-            ``,
-            `<b>Hey ${name}</b> — you're all set.`,
-            ``,
-            `<b>Wallet</b>    <code>${sw(wallet ?? "")}</code>`,
-            `<b>Alerts</b>    Active ✓`,
-            ``,
-            D2,
-            ``,
-            `Flow alerts will now be delivered`,
-            `here every time your flows execute.`,
-            ``,
-            `<i>Use the menu below to explore. ↓</i>`,
-          ].join("\n"),
+          `<b>WRAITH</b>  ·  DeFi Automation\n` +
+            `─────────────────────\n\n` +
+            `Wallet linked successfully.\n\n` +
+            `<b>Hello, ${name}.</b> You are all set.\n\n` +
+            `<code>WALLET   </code>  <code>${shortWallet(wallet ?? "")}</code>\n` +
+            `<code>ALERTS   </code>  Active\n\n` +
+            `─────────────────────\n\n` +
+            `Flow alerts will be delivered here\n` +
+            `every time your flows execute.\n\n` +
+            `<i>Select an option below.</i>`,
           { reply_markup: kb.home() },
         );
       } else {
@@ -774,7 +646,7 @@ export async function POST(req: NextRequest) {
       if (!wallet) {
         await send(
           chatId,
-          `❌ <b>Nothing to disconnect</b>\n\nNo wallet is linked to this chat.`,
+          `<b>Nothing to disconnect</b>\n\nNo wallet is linked to this chat.`,
         );
       } else {
         await send(chatId, msgDisconnectAsk(wallet), {
@@ -788,7 +660,6 @@ export async function POST(req: NextRequest) {
     } else if (text === "/about") {
       await send(chatId, msgAbout(), { reply_markup: kb.backHome() });
     } else {
-      // Any unknown input → show home
       const wallet = await telegramStore.getWalletByChatId(chatId);
       await send(chatId, wallet ? msgHome(name, wallet) : msgHomeNew(name), {
         reply_markup: wallet ? kb.home() : kb.homeNew(),
